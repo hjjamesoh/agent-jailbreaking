@@ -1,0 +1,7 @@
+torch
+transformers>=4.40
+accelerate
+matplotlib
+sentencepiece
+huggingface_hub
+pytest
