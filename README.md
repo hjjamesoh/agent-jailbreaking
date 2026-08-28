@@ -8,27 +8,31 @@ moving on to agent trajectory or tool-use experiments.
 
 Project structure:
 
-  run_exp0.py
-  refusal_repro/
-    analysis.py
-    data.py
-    directions.py
-    metrics.py
-    modeling.py
-    selection.py
-  data/
-    harmful_train.jsonl
-    harmless_train.jsonl
-    harmful_val.jsonl
-    harmless_val.jsonl
+  experiments/
+    exp0_llm_refusal_dir/
+      run.py
+      data/
+        harmful_train.jsonl
+        harmless_train.jsonl
+        harmful_val.jsonl
+        harmless_val.jsonl
+  src/
+    refusal_repro/
+      analysis.py
+      data.py
+      directions.py
+      metrics.py
+      modeling.py
+      selection.py
   scripts/
     check_server_env.py
     validate_data.py
   tests/
     test_directions.py
   requirements.txt
-  EXPERIMENT0_STATUS.md
-  GITHUB_UPLOAD.md
+  docs/
+    EXPERIMENT0_STATUS.md
+    GITHUB_UPLOAD.md
 
 Method summary:
 
@@ -81,16 +85,16 @@ Shared GPU server usage:
 Recommended first pilot:
 
   nvidia-smi
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 run_exp0.py --run-name pilot_001 --candidate-layers 8 12 16 20 24 --batch-size 1 --limit-train 8 --limit-val 4
+  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name pilot_001 --candidate-layers 8 12 16 20 24 --batch-size 1 --limit-train 8 --limit-val 4
 
 Full run after the pilot is stable:
 
   nvidia-smi
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 run_exp0.py --run-name full_001 --batch-size 2
+  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name full_001 --batch-size 2
 
 Default outputs:
 
-  runs/exp0/
+  runs/exp0_llm_refusal_dir/
     config.json
     metadata.json
     token_audit.json
@@ -117,7 +121,7 @@ Before trusting a run:
 
 GitHub upload:
 
-- See GITHUB_UPLOAD.md for the initial commit and push checklist.
+- See docs/GITHUB_UPLOAD.md for the commit and push checklist.
 - Do not commit runs/, model weights, generated .pt artifacts, or secret tokens.
 
 Token position convention:

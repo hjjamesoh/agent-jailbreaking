@@ -3,6 +3,9 @@ import json
 from pathlib import Path
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 def validate_jsonl(path):
     prompts = []
     with open(path, "r", encoding="utf-8") as f:
@@ -47,15 +50,18 @@ def main():
         "paths",
         nargs="*",
         default=[
-            "data/harmful_train.jsonl",
-            "data/harmless_train.jsonl",
-            "data/harmful_val.jsonl",
-            "data/harmless_val.jsonl",
+            "experiments/exp0_llm_refusal_dir/data/harmful_train.jsonl",
+            "experiments/exp0_llm_refusal_dir/data/harmless_train.jsonl",
+            "experiments/exp0_llm_refusal_dir/data/harmful_val.jsonl",
+            "experiments/exp0_llm_refusal_dir/data/harmless_val.jsonl",
         ],
     )
     args = parser.parse_args()
 
-    summaries = [validate_jsonl(Path(path)) for path in args.paths]
+    summaries = [
+        validate_jsonl(path if (path := Path(raw_path)).is_absolute() else REPO_ROOT / path)
+        for raw_path in args.paths
+    ]
     print(json.dumps(summaries, indent=2))
 
 

@@ -7,6 +7,9 @@ Target paper:
 
 Current implementation scope:
 
+- Experiment entrypoint: experiments/exp0_llm_refusal_dir/run.py
+- Shared implementation package: src/refusal_repro/
+- Pilot data: experiments/exp0_llm_refusal_dir/data/
 - Loads harmful and harmless prompt JSONL files.
 - Applies the model chat template when available.
 - Captures decoder-layer outputs with forward hooks.

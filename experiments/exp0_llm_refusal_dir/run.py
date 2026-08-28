@@ -1,10 +1,16 @@
 import argparse
 import json
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import torch
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_DIR = REPO_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from refusal_repro.data import load_jsonl
 from refusal_repro.modeling import (
@@ -37,11 +43,11 @@ def parse_args():
         default="meta-llama/Meta-Llama-3-8B-Instruct",
         help="Hugging Face causal LM. Exact paper example: Meta-Llama-3-8B-Instruct.",
     )
-    p.add_argument("--harmful-train", default="data/harmful_train.jsonl")
-    p.add_argument("--harmless-train", default="data/harmless_train.jsonl")
-    p.add_argument("--harmful-val", default="data/harmful_val.jsonl")
-    p.add_argument("--harmless-val", default="data/harmless_val.jsonl")
-    p.add_argument("--out", default="runs/exp0")
+    p.add_argument("--harmful-train", default="experiments/exp0_llm_refusal_dir/data/harmful_train.jsonl")
+    p.add_argument("--harmless-train", default="experiments/exp0_llm_refusal_dir/data/harmless_train.jsonl")
+    p.add_argument("--harmful-val", default="experiments/exp0_llm_refusal_dir/data/harmful_val.jsonl")
+    p.add_argument("--harmless-val", default="experiments/exp0_llm_refusal_dir/data/harmless_val.jsonl")
+    p.add_argument("--out", default="runs/exp0_llm_refusal_dir")
     p.add_argument(
         "--run-name",
         default=None,
@@ -112,10 +118,14 @@ def _write_json(path, payload):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
+def _repo_path(path):
+    path = Path(path)
+    return path if path.is_absolute() else REPO_ROOT / path
+
 
 def main():
     args = parse_args()
-    out = Path(args.out)
+    out = _repo_path(args.out)
     if args.run_name:
         out = out / args.run_name
     out.mkdir(parents=True, exist_ok=True)
@@ -146,10 +156,10 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
-    harmful_train = load_jsonl(args.harmful_train)
-    harmless_train = load_jsonl(args.harmless_train)
-    harmful_val = load_jsonl(args.harmful_val)
-    harmless_val = load_jsonl(args.harmless_val)
+    harmful_train = load_jsonl(_repo_path(args.harmful_train))
+    harmless_train = load_jsonl(_repo_path(args.harmless_train))
+    harmful_val = load_jsonl(_repo_path(args.harmful_val))
+    harmless_val = load_jsonl(_repo_path(args.harmless_val))
     if args.limit_train is not None:
         harmful_train = harmful_train[:args.limit_train]
         harmless_train = harmless_train[:args.limit_train]

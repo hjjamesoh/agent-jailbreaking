@@ -10,12 +10,12 @@ Before committing:
 
 3. Confirm the code still compiles:
 
-   python -m compileall run_exp0.py refusal_repro scripts tests
+   python -m compileall experiments src scripts tests
 
-Recommended initial commit:
+Recommended commit:
 
-  git add .gitignore README.txt EXPERIMENT0_STATUS.md GITHUB_UPLOAD.md requirements.txt run_exp0.py refusal_repro data scripts tests
-  git commit -m "Initial Experiment 0 refusal direction scaffold"
+  git add .gitignore README.md docs requirements.txt experiments src scripts tests
+  git commit -m "Organize Experiment 0 project structure"
 
 Recommended branch name:
 
