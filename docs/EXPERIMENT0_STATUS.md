@@ -10,6 +10,7 @@ Current implementation scope:
 - Experiment entrypoint: experiments/exp0_llm_refusal_dir/run.py
 - Shared implementation package: src/refusal_repro/
 - Pilot data: experiments/exp0_llm_refusal_dir/data/
+- Paper split converter: scripts/prepare_exp0_paper_splits.py
 - Loads harmful and harmless prompt JSONL files.
 - Applies the model chat template when available.
 - Captures decoder-layer outputs with forward hooks.
@@ -27,10 +28,11 @@ Reproducibility safeguards already implemented:
 - Negative positions are resolved against each sample's final non-padding token.
 - token_audit.json records sampled token IDs/texts for the selected positions.
 - runs/ and model artifacts are ignored by git.
+- Converted paper_splits are ignored by git because they are derived from the original repository.
 
 Known limitations before claiming paper-level reproduction:
 
-- The bundled datasets are tiny pilot datasets, not the original full training/evaluation datasets.
+- The bundled datasets are tiny pilot datasets; use scripts/prepare_exp0_paper_splits.py to convert the original paper splits before larger reproduction runs.
 - Candidate selection uses a refusal-prefix probability proxy.
 - Completion refusal labels use a simple prefix heuristic rather than a publication-grade evaluator.
 - The implementation uses inference-time hooks, not persistent weight orthogonalization.

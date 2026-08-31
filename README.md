@@ -26,6 +26,7 @@ Project structure:
       selection.py
   scripts/
     check_server_env.py
+    prepare_exp0_paper_splits.py
     validate_data.py
   tests/
     test_directions.py
@@ -72,6 +73,20 @@ Server preflight:
   python3 scripts/check_server_env.py
   python3 scripts/validate_data.py
 
+Paper dataset preparation:
+
+The bundled JSONL files are smoke-test data. For closer reproduction, clone the
+original paper repository next to this repository and convert its split files:
+
+  cd /mnt/SIM/hyunjaeoh
+  git clone https://github.com/andyrdt/refusal_direction.git upstream_refusal_direction
+  cd agent-jailbreaking
+  python3 scripts/prepare_exp0_paper_splits.py --upstream-dir ../upstream_refusal_direction
+  python3 scripts/validate_data.py experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl
+
+Converted paper_splits are ignored by git because they are derived from the
+original repository.
+
 Shared GPU server usage:
 
 - Experiments are run on a shared remote GPU server.
@@ -91,6 +106,11 @@ Full run after the pilot is stable:
 
   nvidia-smi
   CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name full_001 --batch-size 2
+
+Paper-split pilot after conversion:
+
+  nvidia-smi
+  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name paper_splits_pilot_001 --harmful-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl --harmless-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl --harmful-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl --harmless-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl --batch-size 1 --limit-train 64 --limit-val 32
 
 Default outputs:
 
