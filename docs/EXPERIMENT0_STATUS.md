@@ -18,6 +18,9 @@ Current implementation scope:
 - Captures decoder-layer outputs with forward hooks.
 - Computes layer/position candidate directions as mean(harmful) - mean(harmless).
 - Selects a candidate direction using a validation-set next-token refusal-prefix proxy under inference-time ablation.
+- Excludes the final 20% of decoder layers from automatic candidate selection
+  by default; explicit --candidate-layers overrides this.
+- Records removal/addition strengths with --ablation-alpha and --addition-alpha.
 - Saves run config, runtime metadata, token-position audit, selection metrics, selected direction, and a projection plot.
 - Generates small validation completion artifacts for baseline, ablation, and activation-addition sanity checks.
 
@@ -29,6 +32,7 @@ Reproducibility safeguards already implemented:
 - Tokenizer padding and truncation sides are recorded.
 - Negative positions are resolved against each sample's final non-padding token.
 - token_audit.json records sampled token IDs/texts for the selected positions.
+- config.json and metadata.json record the effective candidate layer list and intervention alpha values.
 - runs/ and model artifacts are ignored by git.
 - Converted paper_splits are ignored by git because they are derived from the original repository.
 

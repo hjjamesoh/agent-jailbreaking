@@ -82,11 +82,11 @@ Setup:
 
 The default model is:
 
-  meta-llama/Meta-Llama-3-8B-Instruct
+  Qwen/Qwen3-8B-Base
 
 You may need Hugging Face authentication and model access before running:
 
-  huggingface-cli login
+  hf auth login
 
 Server preflight:
 
@@ -106,12 +106,25 @@ Shared GPU server usage:
 Recommended first pilot:
 
   nvidia-smi
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name pilot_001 --candidate-layers 8 12 16 20 24 --batch-size 1 --limit-train 8 --limit-val 4
+  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name qwen3_8b_base_pilot_001 --batch-size 1 --limit-train 12 --limit-val 6
+
+Paper-split pilot after preparing experiments/exp0_llm_refusal_dir/data/paper_splits/:
+
+  nvidia-smi
+  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --model Qwen/Qwen3-8B-Base --run-name qwen3_8b_base_paper_pruned_001 --harmful-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl --harmless-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl --harmful-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl --harmless-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl --batch-size 1 --limit-train 64 --limit-val 32 --completion-eval-examples 16 --prune-layer-percentage 0.2
 
 Full run after the pilot is stable:
 
   nvidia-smi
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name full_001 --batch-size 2
+  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name qwen3_8b_base_full_001 --batch-size 2 --prune-layer-percentage 0.2
+
+Layer selection notes:
+
+- By default, Experiment 0 excludes the final 20% of decoder layers from candidate selection.
+- This mirrors the original refusal-direction implementation's practice of avoiding late-layer directions.
+- Pass --prune-layer-percentage 0.0 to evaluate all layers.
+- Pass --candidate-layers explicitly to override automatic pruning.
+- Direction removal/addition scales are recorded as --ablation-alpha and --addition-alpha.
 
 Default outputs:
 
@@ -120,9 +133,9 @@ Default outputs:
     metadata.json
     token_audit.json
     metrics.json
+    best_direction.json
     candidate_directions.pt
     direction.pt
-    best_direction.json
     selection_metrics.csv
     projection_by_layer.png
     benign_activation_addition_examples.jsonl

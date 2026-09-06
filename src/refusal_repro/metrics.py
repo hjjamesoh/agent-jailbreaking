@@ -78,10 +78,10 @@ def _vector_hook(direction, mode="subtract", alpha=1.0):
 @torch.no_grad()
 def refusal_metric_with_ablation(
     model, tokenizer, prompts, refusal_ids, layer_idx, direction,
-    batch_size=4, max_length=1024
+    batch_size=4, max_length=1024, alpha=1.0
 ):
     layer = get_decoder_layers(model)[layer_idx]
-    h = layer.register_forward_hook(_vector_hook(direction, mode="subtract", alpha=1.0))
+    h = layer.register_forward_hook(_vector_hook(direction, mode="subtract", alpha=alpha))
     try:
         return average_refusal_metric(
             model, tokenizer, prompts, refusal_ids,

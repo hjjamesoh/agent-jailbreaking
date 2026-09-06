@@ -30,7 +30,7 @@ from refusal_repro.metrics import (
     generate_completions,
     summarize_completion_refusals,
 )
-from refusal_repro.selection import select_best_candidate
+from refusal_repro.selection import resolve_candidate_layers, select_best_candidate
 from refusal_repro.analysis import save_projection_plot
 
 
@@ -40,7 +40,7 @@ def parse_args():
     )
     p.add_argument(
         "--model",
-        default="meta-llama/Meta-Llama-3-8B-Instruct",
+        default="Qwen/Qwen3-8B-Base",
         help="Hugging Face causal LM used for refusal-direction detection.",
     )
     p.add_argument("--harmful-train", default="experiments/exp0_llm_refusal_dir/data/harmful_train.jsonl")
@@ -96,6 +96,27 @@ def parse_args():
         help="Optional layer subset for a quick pilot, e.g. 8 10 12 14 16.",
     )
     p.add_argument(
+        "--prune-layer-percentage",
+        type=float,
+        default=0.2,
+        help=(
+            "When --candidate-layers is omitted, exclude this fraction of final "
+            "layers from selection. Use 0.0 to evaluate every layer."
+        ),
+    )
+    p.add_argument(
+        "--ablation-alpha",
+        type=float,
+        default=1.0,
+        help="Scale for refusal-direction removal during selection and harmful completion checks.",
+    )
+    p.add_argument(
+        "--addition-alpha",
+        type=float,
+        default=1.0,
+        help="Scale for refusal-direction addition during benign completion checks.",
+    )
+    p.add_argument(
         "--dtype",
         default="auto",
         choices=["auto", "float16", "bfloat16", "float32"],
@@ -147,6 +168,9 @@ def main():
         "limit_val": args.limit_val,
         "positions": args.positions,
         "candidate_layers": args.candidate_layers,
+        "prune_layer_percentage": args.prune_layer_percentage,
+        "ablation_alpha": args.ablation_alpha,
+        "addition_alpha": args.addition_alpha,
         "token_audit_examples": args.token_audit_examples,
         "completion_eval_examples": args.completion_eval_examples,
         "dtype": args.dtype,
@@ -169,6 +193,15 @@ def main():
 
     model, tokenizer = load_model_and_tokenizer(args.model, dtype=args.dtype)
     n_layers = len(get_decoder_layers(model))
+    effective_candidate_layers = resolve_candidate_layers(
+        n_layers,
+        candidate_layers=args.candidate_layers,
+        prune_layer_percentage=(
+            None if args.candidate_layers is not None else args.prune_layer_percentage
+        ),
+    )
+    config["effective_candidate_layers"] = effective_candidate_layers
+    _write_json(out / "config.json", config)
 
     metadata = runtime_metadata(model=model, tokenizer=tokenizer)
     metadata.update({
@@ -179,6 +212,14 @@ def main():
         "num_harmless_train": len(harmless_train),
         "num_harmful_val": len(harmful_val),
         "num_harmless_val": len(harmless_val),
+        "effective_candidate_layers": effective_candidate_layers,
+        "candidate_layer_policy": (
+            "explicit --candidate-layers"
+            if args.candidate_layers is not None
+            else f"all layers except final {args.prune_layer_percentage:.2%}"
+        ),
+        "ablation_alpha": args.ablation_alpha,
+        "addition_alpha": args.addition_alpha,
         "data_schema": "JSONL; each row is either a JSON string or an object with a non-empty 'prompt' field",
         "activation_capture": {
             "module": "decoder layer forward hook",
@@ -216,6 +257,7 @@ def main():
     refusal_ids = refusal_token_ids(tokenizer)
     print("Refusal token IDs:", refusal_ids)
     print("Number of decoder layers:", n_layers)
+    print("Effective candidate layers:", effective_candidate_layers)
 
     base_harm, _ = average_refusal_metric(
         model,
@@ -277,7 +319,8 @@ def main():
         out_csv=out / "selection_metrics.csv",
         batch_size=args.batch_size,
         max_length=args.max_length,
-        candidate_layers=args.candidate_layers,
+        candidate_layers=effective_candidate_layers,
+        ablation_alpha=args.ablation_alpha,
         baseline_harmful_refusal=base_harm,
         baseline_harmless_refusal=base_safe,
     )
@@ -291,6 +334,9 @@ def main():
         "refusal_token_ids": refusal_ids,
         "config": config,
         "metadata": metadata,
+        "effective_candidate_layers": effective_candidate_layers,
+        "ablation_alpha": args.ablation_alpha,
+        "addition_alpha": args.addition_alpha,
     }
     torch.save(best_payload, out / "direction.pt")
 
@@ -301,6 +347,9 @@ def main():
         "baseline_harmful_refusal": base_harm,
         "baseline_harmless_refusal": base_safe,
         "selected_direction": best,
+        "effective_candidate_layers": effective_candidate_layers,
+        "ablation_alpha": args.ablation_alpha,
+        "addition_alpha": args.addition_alpha,
         "selection_metric": (
             "harmful_refusal_delta - max(0, harmless_refusal_delta); "
             "higher is better under the next-token refusal-prefix proxy"
@@ -325,7 +374,7 @@ def main():
         benign_examples,
         layer_idx=int(best["layer"]),
         direction=best_direction,
-        alpha=1.0,
+        alpha=args.addition_alpha,
         max_new_tokens=args.max_new_tokens,
     )
     with open(out / "benign_activation_addition_examples.jsonl", "w", encoding="utf-8") as f:
@@ -350,6 +399,7 @@ def main():
             layer_idx=int(best["layer"]),
             direction=best_direction,
             intervention="subtract",
+            alpha=args.ablation_alpha,
         ),
         "harmless_baseline": generate_completions(
             model,
@@ -365,6 +415,7 @@ def main():
             layer_idx=int(best["layer"]),
             direction=best_direction,
             intervention="add",
+            alpha=args.addition_alpha,
         ),
     }
     completions_dir = out / "completions"
