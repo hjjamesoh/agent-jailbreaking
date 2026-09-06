@@ -153,7 +153,10 @@ def _token_audit_for_texts(tokenizer, dataset_name, texts, positions, max_length
 
 
 def _load_direction(path):
-    payload = torch.load(path, map_location="cpu")
+    try:
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+    except TypeError:
+        payload = torch.load(path, map_location="cpu")
     if "direction" not in payload:
         raise ValueError(f"{path} does not contain a selected 'direction' tensor.")
     metrics = payload.get("metrics", {})
