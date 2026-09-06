@@ -21,8 +21,11 @@ Project structure:
         harmless_train.jsonl
         harmful_val.jsonl
         harmless_val.jsonl
+    exp1_agent_refusal_dir/
+      run.py
   src/
     refusal_repro/
+      agent_env.py
       analysis.py
       data.py
       directions.py
@@ -56,12 +59,12 @@ Experiment 0 method summary:
 Experiment 1 method summary:
 
 1. Choose an LLM and selected refusal direction from Experiment 0.
-2. Implement a minimal agent loop around the LLM, including prompts, tool calls,
-   trajectory logging, and refusal/success evaluation.
-3. Run the same agent tasks under three conditions: baseline, refusal-direction
+2. Build a minimal ReAct-style agent loop around the LLM with safe mock tools.
+3. Detect a new agent-context direction from harmful/harmless agent prompts.
+4. Run the same agent tasks under three conditions: baseline, refusal-direction
    removal, and refusal-direction addition.
-4. Apply the intervention at the layer/position detected in Experiment 0.
-5. Compare final answers, intermediate trajectories, tool-use decisions, refusal
+5. Apply the Experiment 0 direction at the selected layer/position during agent generation.
+6. Compare final answers, intermediate trajectories, tool-use decisions, refusal
    rates, and task success/failure.
 
 Important limitations:
@@ -72,6 +75,8 @@ Important limitations:
 - The ablation implementation is an inference-time decoder-layer hook, not persistent model weight orthogonalization.
 - Dataset filtering by baseline refusal score is not implemented yet.
 - CE-loss evaluation is not implemented yet.
+- Experiment 1 currently uses a minimal mock-tool agent environment, not a full
+  browser, shell, or web-connected autonomous agent.
 - Do not interpret Experiment 0 projection or proxy metrics as causal evidence
   without Experiment 1 intervention results.
 
@@ -152,6 +157,38 @@ Before trusting an Experiment 0 run:
 3. Inspect selection_metrics.csv and verify harmful refusal decreases without increasing harmless refusal under the proxy metric.
 4. Inspect completions/ and benign_activation_addition_examples.jsonl for qualitative sanity.
 5. Treat this as direction discovery only; agent-level claims require Experiment 1.
+
+Experiment 1 smoke test with the selected Experiment 0 direction:
+
+  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp1_agent_refusal_dir/run.py --mode both --model Qwen/Qwen3-8B-Base --run-name qwen3_8b_base_agent_smoke_001 --exp0-direction runs/exp0_llm_refusal_dir/qwen3_8b_base_paper_mid_layers_fulltrain_001/direction.pt --harmful-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl --harmless-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl --harmful-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl --harmless-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl --batch-size 1 --limit-train 64 --limit-val 16 --agent-eval-examples 8 --candidate-layers 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
+
+Experiment 1 outputs:
+
+  runs/exp1_agent_refusal_dir/
+    config.json
+    metadata.json
+    metrics.json
+    agent_token_audit.json
+    agent_candidate_directions.pt
+    agent_direction.pt
+    agent_best_direction.json
+    agent_selection_metrics.csv
+    agent_runs/
+      harmful_baseline.jsonl
+      harmful_subtract.jsonl
+      harmful_add.jsonl
+      harmless_baseline.jsonl
+      harmless_subtract.jsonl
+      harmless_add.jsonl
+
+Difference between Experiment 0 and Experiment 1:
+
+- Experiment 0 detects directions at a single-turn LLM generation boundary.
+- Experiment 1 detects and applies directions inside an agent prompt that includes
+  system instructions, tool descriptions, a task, and an agent scratchpad.
+- Experiment 1 logs trajectory fields: prompt context, model output, parsed tool
+  call, observation, final answer, intervention mode, layer, position, direction
+  path, and alpha.
 
 GitHub upload:
 

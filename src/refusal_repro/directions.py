@@ -13,6 +13,9 @@ def format_prompts(tokenizer, prompts):
 
 def _format_batch(tokenizer, prompts, max_length):
     texts = format_prompts(tokenizer, prompts)
+    return _tokenize_texts(tokenizer, texts, max_length)
+
+def _tokenize_texts(tokenizer, texts, max_length):
     return tokenizer(
         texts,
         return_tensors="pt",
@@ -92,14 +95,26 @@ def token_position_audit(tokenizer, dataset_name, prompts, positions, max_length
 
 @torch.no_grad()
 def mean_residuals(model, tokenizer, prompts, positions=(-1,), batch_size=4, max_length=1024):
+    texts = format_prompts(tokenizer, prompts)
+    return mean_residuals_from_texts(
+        model,
+        tokenizer,
+        texts,
+        positions=positions,
+        batch_size=batch_size,
+        max_length=max_length,
+    )
+
+@torch.no_grad()
+def mean_residuals_from_texts(model, tokenizer, texts, positions=(-1,), batch_size=4, max_length=1024):
     layers = get_decoder_layers(model)
     device = next(model.parameters()).device
     sums = None
     count = 0
 
-    for start in range(0, len(prompts), batch_size):
-        batch_prompts = prompts[start:start + batch_size]
-        toks = _format_batch(tokenizer, batch_prompts, max_length)
+    for start in range(0, len(texts), batch_size):
+        batch_texts = texts[start:start + batch_size]
+        toks = _tokenize_texts(tokenizer, batch_texts, max_length)
         toks = {k: v.to(device) for k, v in toks.items()}
         position_indices = _position_indices_from_attention_mask(
             toks["attention_mask"],
@@ -134,7 +149,7 @@ def mean_residuals(model, tokenizer, prompts, positions=(-1,), batch_size=4, max
         stacked = torch.stack(batch_vals, dim=0)  # [L, B, P, D]
         cur_sum = stacked.sum(dim=1)               # [L, P, D]
         sums = cur_sum if sums is None else sums + cur_sum
-        count += len(batch_prompts)
+        count += len(batch_texts)
 
     return sums / count
 

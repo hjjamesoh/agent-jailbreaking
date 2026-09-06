@@ -44,8 +44,28 @@ Experiment 1: agent-environment intervention
 Goal:
 
 - Build an agent environment using the LLM selected in Experiment 0.
+- Check whether harmful/harmless agent contexts produce a similar refusal direction.
 - Apply the detected refusal direction inside the agent's model calls.
 - Compare behavior when the direction is removed, added, or left untouched.
+
+Current implementation:
+
+- Entrypoint: experiments/exp1_agent_refusal_dir/run.py
+- Agent utilities: src/refusal_repro/agent_env.py
+- Environment: a minimal ReAct-style loop with safe mock tools.
+- Modes:
+  - detect: compute an agent-context refusal direction from harmful/harmless agent prompts.
+  - apply: load an Experiment 0 direction.pt and apply it inside agent generation.
+  - both: run both detect and apply in one job.
+
+How this differs from Experiment 0:
+
+- Experiment 0 formats each example as a single user-to-assistant prompt.
+- Experiment 1 formats each example as an agent task with system instructions,
+  tool descriptions, and an agent scratchpad.
+- Experiment 0 logs completions; Experiment 1 logs trajectories, including model
+  output, parsed tool call, observation, final answer, intervention mode, layer,
+  position, direction path, and alpha.
 
 Experimental conditions:
 
@@ -63,6 +83,10 @@ Agent requirements:
 - Keep intervention code explicit about layer index, token position, direction
   source path, alpha/scale, and whether the operation is add or subtract.
 - Evaluate both final refusal behavior and intermediate agent behavior.
+
+Suggested first smoke command:
+
+  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp1_agent_refusal_dir/run.py --mode both --model Qwen/Qwen3-8B-Base --run-name qwen3_8b_base_agent_smoke_001 --exp0-direction runs/exp0_llm_refusal_dir/qwen3_8b_base_paper_mid_layers_fulltrain_001/direction.pt --harmful-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl --harmless-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl --harmful-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl --harmless-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl --batch-size 1 --limit-train 64 --limit-val 16 --agent-eval-examples 8 --candidate-layers 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
 
 Suggested metrics:
 

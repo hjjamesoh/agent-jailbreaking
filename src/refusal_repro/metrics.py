@@ -39,15 +39,26 @@ def refusal_token_ids(tokenizer):
 
 @torch.no_grad()
 def average_refusal_metric(model, tokenizer, prompts, refusal_ids, batch_size=4, max_length=1024):
+    texts = [_prompt_text(tokenizer, prompt) for prompt in prompts]
+    return average_refusal_metric_from_texts(
+        model,
+        tokenizer,
+        texts,
+        refusal_ids,
+        batch_size=batch_size,
+        max_length=max_length,
+    )
+
+@torch.no_grad()
+def average_refusal_metric_from_texts(model, tokenizer, texts, refusal_ids, batch_size=4, max_length=1024):
     device = next(model.parameters()).device
     vals = []
     tokenizer.padding_side = "left"
 
-    for start in range(0, len(prompts), batch_size):
-        batch = prompts[start:start + batch_size]
-        texts = [_prompt_text(tokenizer, p) for p in batch]
+    for start in range(0, len(texts), batch_size):
+        batch = texts[start:start + batch_size]
         toks = tokenizer(
-            texts, return_tensors="pt", padding=True, truncation=True,
+            batch, return_tensors="pt", padding=True, truncation=True,
             max_length=max_length, add_special_tokens=False
         )
         toks = {k: v.to(device) for k, v in toks.items()}
@@ -80,11 +91,29 @@ def refusal_metric_with_ablation(
     model, tokenizer, prompts, refusal_ids, layer_idx, direction,
     batch_size=4, max_length=1024, alpha=1.0
 ):
+    texts = [_prompt_text(tokenizer, prompt) for prompt in prompts]
+    return refusal_metric_with_ablation_from_texts(
+        model,
+        tokenizer,
+        texts,
+        refusal_ids,
+        layer_idx,
+        direction,
+        batch_size=batch_size,
+        max_length=max_length,
+        alpha=alpha,
+    )
+
+@torch.no_grad()
+def refusal_metric_with_ablation_from_texts(
+    model, tokenizer, texts, refusal_ids, layer_idx, direction,
+    batch_size=4, max_length=1024, alpha=1.0
+):
     layer = get_decoder_layers(model)[layer_idx]
     h = layer.register_forward_hook(_vector_hook(direction, mode="subtract", alpha=alpha))
     try:
-        return average_refusal_metric(
-            model, tokenizer, prompts, refusal_ids,
+        return average_refusal_metric_from_texts(
+            model, tokenizer, texts, refusal_ids,
             batch_size=batch_size, max_length=max_length
         )
     finally:

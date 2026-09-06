@@ -1,6 +1,6 @@
 import csv
 import torch
-from .metrics import refusal_metric_with_ablation
+from .metrics import refusal_metric_with_ablation, refusal_metric_with_ablation_from_texts
 
 def resolve_candidate_layers(n_layers, candidate_layers=None, prune_layer_percentage=None):
     if n_layers <= 0:
@@ -38,6 +38,7 @@ def select_best_candidate(
     max_length=1024,
     candidate_layers=None,
     ablation_alpha=1.0,
+    inputs_are_texts=False,
     baseline_harmful_refusal=None,
     baseline_harmless_refusal=None,
 ):
@@ -47,18 +48,23 @@ def select_best_candidate(
     results = []
     best = None
     best_direction = None
+    metric_fn = (
+        refusal_metric_with_ablation_from_texts
+        if inputs_are_texts
+        else refusal_metric_with_ablation
+    )
 
     for layer in layers:
         for p_idx, position in enumerate(positions):
             direction = candidates[layer, p_idx]
 
-            harm_abl, _ = refusal_metric_with_ablation(
+            harm_abl, _ = metric_fn(
                 model, tokenizer, harmful_val, refusal_ids,
                 layer_idx=layer, direction=direction,
                 batch_size=batch_size, max_length=max_length,
                 alpha=ablation_alpha,
             )
-            safe_abl, _ = refusal_metric_with_ablation(
+            safe_abl, _ = metric_fn(
                 model, tokenizer, harmless_val, refusal_ids,
                 layer_idx=layer, direction=direction,
                 batch_size=batch_size, max_length=max_length,
