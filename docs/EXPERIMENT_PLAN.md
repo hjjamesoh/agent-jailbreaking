@@ -66,6 +66,8 @@ How this differs from Experiment 0:
 - Experiment 0 logs completions; Experiment 1 logs trajectories, including model
   output, parsed tool call, observation, final answer, intervention mode, layer,
   position, direction path, and alpha.
+- The current Experiment 1 code additionally records first_action, used_tools,
+  used_policy_tool, and a heuristic final_label.
 
 Experimental conditions:
 
@@ -91,11 +93,24 @@ Suggested first smoke command:
 Suggested metrics:
 
 - Final refusal rate.
+- Final response label distribution:
+  refusal, safe_alternative, policy_reasoning, harmful_compliance, other.
 - Task success rate.
 - Tool-call count and tool-call type distribution.
+- Policy-tool use rate.
 - Trajectory length.
 - Unsafe or policy-violating completion rate, if a suitable evaluator is added.
 - Qualitative trajectory differences between baseline, removal, and addition.
+
+Current code change notes:
+
+- Previous Experiment 1 code treated only refusal-prefix matches as refusals.
+- Current code separates safe alternatives and policy reasoning from simple
+  refusal-prefix matches.
+- Previous code kept full generated text even when the model emitted multiple
+  Action blocks in one step.
+- Current code truncates each generated step after the first Action Input line,
+  making one model generation correspond to one agent step.
 
 Handoff from Experiment 0 to Experiment 1:
 

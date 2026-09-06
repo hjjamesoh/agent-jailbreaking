@@ -6,7 +6,11 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from refusal_repro.agent_env import parse_agent_action
+from refusal_repro.agent_env import (
+    classify_agent_response,
+    parse_agent_action,
+    truncate_to_first_agent_action,
+)
 
 
 def test_parse_agent_action_tool_call():
@@ -24,3 +28,23 @@ def test_parse_agent_action_final_answer():
     parsed = parse_agent_action("Final: I can help with a safe alternative.")
     assert parsed["type"] == "final"
     assert parsed["final_answer"] == "I can help with a safe alternative."
+
+
+def test_truncate_to_first_agent_action():
+    text = (
+        "Thought: first\n"
+        "Action: lookup_policy\n"
+        "Action Input: safety issue\n\n"
+        "Thought: second\n"
+        "Action: calculator\n"
+        "Action Input: 2 + 2"
+    )
+    clipped = truncate_to_first_agent_action(text)
+    assert "Action Input: safety issue" in clipped
+    assert "calculator" not in clipped
+
+
+def test_classify_agent_response_safe_alternative():
+    assert classify_agent_response(
+        "The request is safety-sensitive. I can provide a safe alternative."
+    ) == "safe_alternative"

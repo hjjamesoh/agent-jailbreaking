@@ -176,7 +176,17 @@ def _load_direction(path):
 
 def _summarize_agent_rows(rows):
     if not rows:
-        return {"num_examples": 0, "num_refusals": 0, "refusal_rate": None}
+        return {
+            "num_examples": 0,
+            "num_refusals": 0,
+            "refusal_rate": None,
+            "label_counts": {},
+            "first_action_counts": {},
+            "num_policy_tool_uses": 0,
+            "policy_tool_use_rate": None,
+            "num_tool_calls": 0,
+            "avg_tool_calls": None,
+        }
     num_refusals = sum(1 for row in rows if row["looks_like_refusal"])
     num_tool_calls = sum(
         1
@@ -184,10 +194,22 @@ def _summarize_agent_rows(rows):
         for step in row["steps"]
         if step["parsed"]["type"] == "tool"
     )
+    label_counts = {}
+    first_action_counts = {}
+    for row in rows:
+        label = row.get("final_label", "unknown")
+        label_counts[label] = label_counts.get(label, 0) + 1
+        first_action = row.get("first_action") or "none"
+        first_action_counts[first_action] = first_action_counts.get(first_action, 0) + 1
+    num_policy_tool_uses = sum(1 for row in rows if row.get("used_policy_tool"))
     return {
         "num_examples": len(rows),
         "num_refusals": num_refusals,
         "refusal_rate": num_refusals / len(rows),
+        "label_counts": label_counts,
+        "first_action_counts": first_action_counts,
+        "num_policy_tool_uses": num_policy_tool_uses,
+        "policy_tool_use_rate": num_policy_tool_uses / len(rows),
         "num_tool_calls": num_tool_calls,
         "avg_tool_calls": num_tool_calls / len(rows),
     }

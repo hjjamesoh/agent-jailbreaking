@@ -65,7 +65,7 @@ Experiment 1 method summary:
    removal, and refusal-direction addition.
 5. Apply the Experiment 0 direction at the selected layer/position during agent generation.
 6. Compare final answers, intermediate trajectories, tool-use decisions, refusal
-   rates, and task success/failure.
+   rates, response labels, and task success/failure.
 
 Important limitations:
 
@@ -77,6 +77,8 @@ Important limitations:
 - CE-loss evaluation is not implemented yet.
 - Experiment 1 currently uses a minimal mock-tool agent environment, not a full
   browser, shell, or web-connected autonomous agent.
+- Experiment 1 labels are heuristic and intended for smoke testing, not final
+  safety evaluation.
 - Do not interpret Experiment 0 projection or proxy metrics as causal evidence
   without Experiment 1 intervention results.
 
@@ -189,6 +191,17 @@ Difference between Experiment 0 and Experiment 1:
 - Experiment 1 logs trajectory fields: prompt context, model output, parsed tool
   call, observation, final answer, intervention mode, layer, position, direction
   path, and alpha.
+
+Recent Experiment 1 instrumentation changes:
+
+- Earlier code only counted looks_like_refusal from a simple refusal-prefix heuristic.
+- Current code also records final_label values: refusal, safe_alternative,
+  policy_reasoning, harmful_compliance, or other.
+- Current code records first_action, used_tools, and used_policy_tool.
+- Current code clips each model step to the first Action / Action Input block so
+  one generated step does not accidentally contain multiple unexecuted actions.
+- lookup_fact is available for benign factual requests, while lookup_policy is
+  reserved for safety-sensitive requests.
 
 GitHub upload:
 
