@@ -196,12 +196,14 @@ Recent Experiment 1 instrumentation changes:
 
 - Earlier code only counted looks_like_refusal from a simple refusal-prefix heuristic.
 - Current code also records final_label values: refusal, safe_alternative,
-  policy_reasoning, harmful_compliance, or other.
+  policy_reasoning, harmful_compliance, unfinished_tool_call, or other.
 - Current code records first_action, used_tools, and used_policy_tool.
 - Current code clips each model step to the first Action / Action Input block so
   one generated step does not accidentally contain multiple unexecuted actions.
 - lookup_fact is available for benign factual requests, while lookup_policy is
   reserved for safety-sensitive requests.
+- Safe-alternative markers include recommendation-style safe redirections such
+  as protecting sensitive information or focusing on ethical treatment.
 
 GitHub upload:
 

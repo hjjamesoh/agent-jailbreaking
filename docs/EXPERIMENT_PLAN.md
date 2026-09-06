@@ -94,7 +94,8 @@ Suggested metrics:
 
 - Final refusal rate.
 - Final response label distribution:
-  refusal, safe_alternative, policy_reasoning, harmful_compliance, other.
+  refusal, safe_alternative, policy_reasoning, harmful_compliance,
+  unfinished_tool_call, other.
 - Task success rate.
 - Tool-call count and tool-call type distribution.
 - Policy-tool use rate.
@@ -107,6 +108,8 @@ Current code change notes:
 - Previous Experiment 1 code treated only refusal-prefix matches as refusals.
 - Current code separates safe alternatives and policy reasoning from simple
   refusal-prefix matches.
+- Current code labels max-step trajectories that end in another tool call as
+  unfinished_tool_call instead of treating the final tool-call text as a final answer.
 - Previous code kept full generated text even when the model emitted multiple
   Action blocks in one step.
 - Current code truncates each generated step after the first Action Input line,
