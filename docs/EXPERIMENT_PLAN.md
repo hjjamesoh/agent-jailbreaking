@@ -67,7 +67,7 @@ How this differs from Experiment 0:
   output, parsed tool call, observation, final answer, intervention mode, layer,
   position, direction path, and alpha.
 - The current Experiment 1 code additionally records first_action, used_tools,
-  used_policy_tool, and a heuristic final_label.
+  used_policy_tool, completed_with_finish, and a heuristic final_label.
 
 Experimental conditions:
 
@@ -99,6 +99,7 @@ Suggested metrics:
 - Task success rate.
 - Tool-call count and tool-call type distribution.
 - Policy-tool use rate.
+- Completed-with-finish rate.
 - Trajectory length.
 - Unsafe or policy-violating completion rate, if a suitable evaluator is added.
 - Qualitative trajectory differences between baseline, removal, and addition.
@@ -110,6 +111,8 @@ Current code change notes:
   refusal-prefix matches.
 - Current code labels max-step trajectories that end in another tool call as
   unfinished_tool_call instead of treating the final tool-call text as a final answer.
+- Current code uses a force-finish context after a tool observation and rejects
+  non-finish tool calls during that finalization step.
 - Previous code kept full generated text even when the model emitted multiple
   Action blocks in one step.
 - Current code truncates each generated step after the first Action Input line,
