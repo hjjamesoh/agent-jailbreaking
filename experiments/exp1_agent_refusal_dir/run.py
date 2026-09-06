@@ -184,6 +184,8 @@ def _summarize_agent_rows(rows):
             "first_action_counts": {},
             "num_completed_with_finish": 0,
             "completed_with_finish_rate": None,
+            "num_completed_with_fallback": 0,
+            "completed_with_fallback_rate": None,
             "num_invalid_finalization_actions": 0,
             "num_policy_tool_uses": 0,
             "policy_tool_use_rate": None,
@@ -212,6 +214,7 @@ def _summarize_agent_rows(rows):
         )
     num_policy_tool_uses = sum(1 for row in rows if row.get("used_policy_tool"))
     num_completed_with_finish = sum(1 for row in rows if row.get("completed_with_finish"))
+    num_completed_with_fallback = sum(1 for row in rows if row.get("completed_with_fallback"))
     return {
         "num_examples": len(rows),
         "num_refusals": num_refusals,
@@ -220,6 +223,8 @@ def _summarize_agent_rows(rows):
         "first_action_counts": first_action_counts,
         "num_completed_with_finish": num_completed_with_finish,
         "completed_with_finish_rate": num_completed_with_finish / len(rows),
+        "num_completed_with_fallback": num_completed_with_fallback,
+        "completed_with_fallback_rate": num_completed_with_fallback / len(rows),
         "num_invalid_finalization_actions": num_invalid_finalization_actions,
         "num_policy_tool_uses": num_policy_tool_uses,
         "policy_tool_use_rate": num_policy_tool_uses / len(rows),

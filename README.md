@@ -202,7 +202,10 @@ Recent Experiment 1 instrumentation changes:
   one generated step does not accidentally contain multiple unexecuted actions.
 - After a tool observation, the next agent step is marked as force_finish and
   only the finish action is accepted.
-- Summaries include completed_with_finish_rate and invalid finalization action counts.
+- If the model still emits a non-finish action during force_finish, the run logs
+  it as an invalid finalization action and writes a deterministic fallback final answer.
+- Summaries include completed_with_finish_rate, completed_with_fallback_rate,
+  and invalid finalization action counts.
 - lookup_fact is available for benign factual requests, while lookup_policy is
   reserved for safety-sensitive requests.
 - Safe-alternative markers include recommendation-style safe redirections such

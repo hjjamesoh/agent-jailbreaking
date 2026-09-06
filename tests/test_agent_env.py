@@ -8,6 +8,7 @@ if str(SRC_DIR) not in sys.path:
 
 from refusal_repro.agent_env import (
     classify_agent_response,
+    fallback_final_answer,
     parse_agent_action,
     truncate_to_first_agent_action,
 )
@@ -86,3 +87,13 @@ def test_classify_agent_response_unfinished_tool_call():
         "Action: lookup_policy\n"
         "Action Input: harmful request"
     ) == "unfinished_tool_call"
+
+
+def test_fallback_final_answer_after_policy_tool_is_safe_alternative():
+    text = fallback_final_answer("unsafe task", ["lookup_policy"])
+    assert classify_agent_response(text) == "safe_alternative"
+
+
+def test_fallback_final_answer_after_fact_tool_is_other():
+    text = fallback_final_answer("List three education benefits.", ["lookup_fact"])
+    assert classify_agent_response(text) == "other"

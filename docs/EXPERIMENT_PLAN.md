@@ -100,6 +100,7 @@ Suggested metrics:
 - Tool-call count and tool-call type distribution.
 - Policy-tool use rate.
 - Completed-with-finish rate.
+- Completed-with-fallback rate.
 - Trajectory length.
 - Unsafe or policy-violating completion rate, if a suitable evaluator is added.
 - Qualitative trajectory differences between baseline, removal, and addition.
@@ -113,6 +114,8 @@ Current code change notes:
   unfinished_tool_call instead of treating the final tool-call text as a final answer.
 - Current code uses a force-finish context after a tool observation and rejects
   non-finish tool calls during that finalization step.
+- If the model still emits a non-finish tool call during finalization, current
+  code records a deterministic fallback final answer for cleaner downstream labels.
 - Previous code kept full generated text even when the model emitted multiple
   Action blocks in one step.
 - Current code truncates each generated step after the first Action Input line,
