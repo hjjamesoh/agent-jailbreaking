@@ -36,12 +36,12 @@ from refusal_repro.analysis import save_projection_plot
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="Experiment 0: reproduce a refusal direction in an LLM-only setting."
+        description="Experiment 0: detect a refusal direction in a base LLM."
     )
     p.add_argument(
         "--model",
         default="meta-llama/Meta-Llama-3-8B-Instruct",
-        help="Hugging Face causal LM. Exact paper example: Meta-Llama-3-8B-Instruct.",
+        help="Hugging Face causal LM used for refusal-direction detection.",
     )
     p.add_argument("--harmful-train", default="experiments/exp0_llm_refusal_dir/data/harmful_train.jsonl")
     p.add_argument("--harmless-train", default="experiments/exp0_llm_refusal_dir/data/harmless_train.jsonl")
@@ -395,7 +395,7 @@ def main():
     print()
     print(
         "Note: completion refusal labels use a simple prefix heuristic. "
-        "Use a stronger evaluator before claiming paper-level reproduction."
+        "Use Experiment 1 agent interventions before making agent-level claims."
     )
 
 

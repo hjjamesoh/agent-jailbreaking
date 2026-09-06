@@ -1,16 +1,18 @@
 Experiment 0 Status
 
-Target paper:
+Current role:
 
-- "Refusal in Language Models Is Mediated by a Single Direction"
-- Reference implementation: https://github.com/andyrdt/refusal_direction
+- Experiment 0 detects refusal directions from available base LLM models.
+- Its output is a selected layer, prompt position, and refusal-direction vector
+  that can be reused by Experiment 1 in an agent environment.
+- The previous paper-reproduction goal is paused.
 
 Current implementation scope:
 
 - Experiment entrypoint: experiments/exp0_llm_refusal_dir/run.py
 - Shared implementation package: src/refusal_repro/
 - Pilot data: experiments/exp0_llm_refusal_dir/data/
-- Paper split converter: scripts/prepare_exp0_paper_splits.py
+- Optional legacy paper split converter: scripts/prepare_exp0_paper_splits.py
 - Loads harmful and harmless prompt JSONL files.
 - Applies the model chat template when available.
 - Captures decoder-layer outputs with forward hooks.
@@ -30,15 +32,15 @@ Reproducibility safeguards already implemented:
 - runs/ and model artifacts are ignored by git.
 - Converted paper_splits are ignored by git because they are derived from the original repository.
 
-Known limitations before claiming paper-level reproduction:
+Known limitations before using this as agent evidence:
 
-- The bundled datasets are tiny pilot datasets; use scripts/prepare_exp0_paper_splits.py to convert the original paper splits before larger reproduction runs.
+- The bundled datasets are tiny pilot datasets; replace or expand them before larger direction-discovery runs.
 - Candidate selection uses a refusal-prefix probability proxy.
 - Completion refusal labels use a simple prefix heuristic rather than a publication-grade evaluator.
 - The implementation uses inference-time hooks, not persistent weight orthogonalization.
 - Baseline refusal-score dataset filtering is not implemented.
 - CE-loss evaluation is not implemented.
-- The exact original model wrapper/tokenization utilities are not vendored.
+- Agent-level intervention is not implemented in Experiment 0.
 
 Recommended next evidence on the GPU server:
 
@@ -49,5 +51,13 @@ Recommended next evidence on the GPU server:
 5. Inspect token_audit.json to confirm the selected token positions.
 6. Inspect selection_metrics.csv and metrics.json for meaningful harmful refusal reduction.
 7. Inspect completions/ and benign_activation_addition_examples.jsonl for qualitative sanity.
+8. Promote a run to Experiment 1 only when direction.pt, best_direction.json,
+   and token_audit.json agree on the intended model/layer/position.
 
-Do not proceed to agent trajectory instrumentation until the Experiment 0 pilot behavior is stable.
+Experiment 1 handoff criteria:
+
+- A concrete model checkpoint is selected.
+- best_direction.json records a clear layer and position.
+- direction.pt contains the selected vector and model metadata.
+- Baseline, removal, and addition smoke completions show direction-sensitive
+  behavior worth testing in an agent loop.

@@ -1,10 +1,15 @@
-Experiment 0: Refusal Direction Reproduction
+Agent Jailbreaking Refusal-Direction Experiments
 
-This directory contains a minimal reproduction scaffold for Experiment 0 of
-"Refusal in Language Models Is Mediated by a Single Direction".
+This repository contains the experiment scaffold for studying whether refusal
+directions detected in base LLMs can be used to modulate refusal behavior inside
+an agent environment.
 
-The immediate goal is to validate the LLM-only refusal-direction pipeline before
-moving on to agent trajectory or tool-use experiments.
+The previous paper-reproduction track is paused. The current plan is:
+
+1. Experiment 0: detect refusal directions in available base LLM models.
+2. Experiment 1: build an agent environment around one of those LLMs, then add
+   or remove the detected refusal direction at the selected layer/position and
+   compare agent behavior.
 
 Project structure:
 
@@ -32,10 +37,13 @@ Project structure:
     test_directions.py
   requirements.txt
   docs/
+    CLEANUP_PLAN.md
+    EXPERIMENT_PLAN.md
     EXPERIMENT0_STATUS.md
+    MODEL_SELECTION.md
     GITHUB_UPLOAD.md
 
-Method summary:
+Experiment 0 method summary:
 
 1. Load harmful and harmless instruction datasets.
 2. Format each instruction with the model chat template.
@@ -45,6 +53,17 @@ Method summary:
 6. Save direction, metrics, run config, runtime metadata, and token-position audit artifacts.
 7. Generate small validation completion artifacts for baseline, ablation, and activation-addition sanity checks.
 
+Experiment 1 method summary:
+
+1. Choose an LLM and selected refusal direction from Experiment 0.
+2. Implement a minimal agent loop around the LLM, including prompts, tool calls,
+   trajectory logging, and refusal/success evaluation.
+3. Run the same agent tasks under three conditions: baseline, refusal-direction
+   removal, and refusal-direction addition.
+4. Apply the intervention at the layer/position detected in Experiment 0.
+5. Compare final answers, intermediate trajectories, tool-use decisions, refusal
+   rates, and task success/failure.
+
 Important limitations:
 
 - The included JSONL files are small pilot datasets for pipeline validation, not publication-quality datasets.
@@ -53,7 +72,8 @@ Important limitations:
 - The ablation implementation is an inference-time decoder-layer hook, not persistent model weight orthogonalization.
 - Dataset filtering by baseline refusal score is not implemented yet.
 - CE-loss evaluation is not implemented yet.
-- Do not interpret projection or proxy metrics as causal evidence without intervention results.
+- Do not interpret Experiment 0 projection or proxy metrics as causal evidence
+  without Experiment 1 intervention results.
 
 Setup:
 
@@ -72,20 +92,6 @@ Server preflight:
 
   python3 scripts/check_server_env.py
   python3 scripts/validate_data.py
-
-Paper dataset preparation:
-
-The bundled JSONL files are smoke-test data. For closer reproduction, clone the
-original paper repository next to this repository and convert its split files:
-
-  cd /mnt/SIM/hyunjaeoh
-  git clone https://github.com/andyrdt/refusal_direction.git upstream_refusal_direction
-  cd agent-jailbreaking
-  python3 scripts/prepare_exp0_paper_splits.py --upstream-dir ../upstream_refusal_direction
-  python3 scripts/validate_data.py experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl
-
-Converted paper_splits are ignored by git because they are derived from the
-original repository.
 
 Shared GPU server usage:
 
@@ -107,11 +113,6 @@ Full run after the pilot is stable:
   nvidia-smi
   CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name full_001 --batch-size 2
 
-Paper-split pilot after conversion:
-
-  nvidia-smi
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name paper_splits_pilot_001 --harmful-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl --harmless-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl --harmful-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl --harmless-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl --batch-size 1 --limit-train 64 --limit-val 32
-
 Default outputs:
 
   runs/exp0_llm_refusal_dir/
@@ -131,13 +132,13 @@ Default outputs:
       harmless_baseline.json
       harmless_activation_addition.json
 
-Before trusting a run:
+Before trusting an Experiment 0 run:
 
 1. Inspect metadata.json and confirm the expected CUDA_VISIBLE_DEVICES value.
 2. Inspect token_audit.json and confirm selected positions correspond to the intended prompt tokens.
 3. Inspect selection_metrics.csv and verify harmful refusal decreases without increasing harmless refusal under the proxy metric.
 4. Inspect completions/ and benign_activation_addition_examples.jsonl for qualitative sanity.
-5. Treat this as Experiment 0 validation only; do not proceed to trajectory experiments until the reproduction behavior is stable.
+5. Treat this as direction discovery only; agent-level claims require Experiment 1.
 
 GitHub upload:
 
