@@ -34,6 +34,7 @@ Project structure:
       selection.py
   scripts/
     check_server_env.py
+    compare_directions.py
     prepare_exp0_paper_splits.py
     validate_data.py
   tests/
@@ -182,6 +183,22 @@ Experiment 1 outputs:
       harmless_baseline.jsonl
       harmless_subtract.jsonl
       harmless_add.jsonl
+
+Direction similarity analysis:
+
+  python3 scripts/compare_directions.py --run-name qwen3_exp0_vs_exp1_smoke_005 --reference-direction runs/exp0_llm_refusal_dir/qwen3_8b_base_paper_mid_layers_fulltrain_001/direction.pt --target-direction runs/exp1_agent_refusal_dir/qwen3_8b_base_agent_smoke_005/agent_direction.pt --target-candidates runs/exp1_agent_refusal_dir/qwen3_8b_base_agent_smoke_005/agent_candidate_directions.pt
+
+This analysis does not run the model. It loads saved direction artifacts and
+reports selected-direction cosine similarity plus the target candidate
+layer/position cells most similar to the reference direction.
+
+Direction similarity outputs:
+
+  runs/direction_comparisons/
+    summary.json
+    candidate_cosine_top_matches.csv
+    candidate_cosine_grid.pt
+    candidate_cosine_heatmap.png
 
 Difference between Experiment 0 and Experiment 1:
 

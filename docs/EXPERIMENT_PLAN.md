@@ -129,3 +129,26 @@ Handoff from Experiment 0 to Experiment 1:
    agent model.
 4. Run a small agent smoke test across all three conditions.
 5. Only then scale to larger agent-task batches.
+
+Direction similarity analysis:
+
+Goal:
+
+- Compare the selected Experiment 0 direction against the selected Experiment 1
+  agent-context direction.
+- Compare the Experiment 0 direction against every Experiment 1 agent candidate
+  layer/position direction.
+
+Entrypoint:
+
+- scripts/compare_directions.py
+
+Suggested command:
+
+  python3 scripts/compare_directions.py --run-name qwen3_exp0_vs_exp1_smoke_005 --reference-direction runs/exp0_llm_refusal_dir/qwen3_8b_base_paper_mid_layers_fulltrain_001/direction.pt --target-direction runs/exp1_agent_refusal_dir/qwen3_8b_base_agent_smoke_005/agent_direction.pt --target-candidates runs/exp1_agent_refusal_dir/qwen3_8b_base_agent_smoke_005/agent_candidate_directions.pt
+
+Primary metrics:
+
+- cosine_with_reference for the selected agent direction.
+- top candidate layer/position matches by absolute cosine similarity.
+- heatmap of reference-vs-agent-candidate cosine similarity.
