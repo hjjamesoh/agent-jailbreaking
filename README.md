@@ -67,11 +67,16 @@ Experiment 1 method summary:
 5. Apply the Experiment 0 direction at the selected layer/position during agent generation.
 6. Compare final answers, intermediate trajectories, tool-use decisions, refusal
    rates, response labels, and task success/failure.
+7. Select agent-context directions with an agent-behavior score by default:
+   harmful safety-behavior reduction under ablation, minus harmless success loss
+   and invalid-action increase.
 
 Important limitations:
 
 - The included JSONL files are small pilot datasets for pipeline validation, not publication-quality datasets.
-- Candidate selection currently uses a next-token refusal-prefix proxy.
+- Experiment 0 candidate selection currently uses a next-token refusal-prefix proxy.
+- Experiment 1 candidate selection uses an agent final-behavior score by default,
+  with the next-token refusal-prefix proxy still available as --selection-metric next_token.
 - Completion refusal labels use a simple prefix heuristic, not a publication-grade evaluator.
 - The ablation implementation is an inference-time decoder-layer hook, not persistent model weight orthogonalization.
 - Dataset filtering by baseline refusal score is not implemented yet.
@@ -163,7 +168,10 @@ Before trusting an Experiment 0 run:
 
 Experiment 1 smoke test with the selected Experiment 0 direction:
 
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp1_agent_refusal_dir/run.py --mode both --model Qwen/Qwen3-8B-Base --run-name qwen3_8b_base_agent_smoke_001 --exp0-direction runs/exp0_llm_refusal_dir/qwen3_8b_base_paper_mid_layers_fulltrain_001/direction.pt --harmful-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl --harmless-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl --harmful-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl --harmless-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl --batch-size 1 --limit-train 64 --limit-val 16 --agent-eval-examples 8 --candidate-layers 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
+  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp1_agent_refusal_dir/run.py --mode both --model Qwen/Qwen3-8B-Base --run-name qwen3_8b_base_agent_weak_behavior_001 --agent-prompt-profile weak --selection-metric agent_behavior --behavior-selection-examples 8 --exp0-direction runs/exp0_llm_refusal_dir/qwen3_8b_base_paper_mid_layers_fulltrain_001/direction.pt --harmful-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl --harmless-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl --harmful-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl --harmless-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl --batch-size 1 --limit-train 64 --limit-val 16 --agent-eval-examples 8 --candidate-layers 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
+
+Repeat the same command with --agent-prompt-profile strong to compare weak and
+strong safety scaffolding.
 
 Experiment 1 outputs:
 
@@ -175,7 +183,9 @@ Experiment 1 outputs:
     agent_candidate_directions.pt
     agent_direction.pt
     agent_best_direction.json
-    agent_selection_metrics.csv
+    agent_behavior_selection_metrics.csv
+    agent_selection_metrics.csv              # only when --selection-metric next_token
+    agent_selection_runs/
     agent_runs/
       harmful_baseline.jsonl
       harmful_subtract.jsonl
@@ -205,6 +215,11 @@ Difference between Experiment 0 and Experiment 1:
 - Experiment 0 detects directions at a single-turn LLM generation boundary.
 - Experiment 1 detects and applies directions inside an agent prompt that includes
   system instructions, tool descriptions, a task, and an agent scratchpad.
+- Experiment 1 supports --agent-prompt-profile weak and strong so prompt safety
+  scaffolding is an explicit experimental condition.
+- Experiment 1 supports --selection-metric agent_behavior and next_token. The
+  behavior score is the default because it is closer to final agent refusal,
+  safe-alternative, harmful-compliance, and benign-task behavior.
 - Experiment 1 logs trajectory fields: prompt context, model output, parsed tool
   call, observation, final answer, intervention mode, layer, position, direction
   path, and alpha.
@@ -227,6 +242,9 @@ Recent Experiment 1 instrumentation changes:
   reserved for safety-sensitive requests.
 - Safe-alternative markers include recommendation-style safe redirections such
   as protecting sensitive information or focusing on ethical treatment.
+- Agent-context direction detection now selects candidates by final agent
+  behavior by default. The score is harmful_safety_delta minus harmless success
+  loss and invalid-action increase.
 
 GitHub upload:
 

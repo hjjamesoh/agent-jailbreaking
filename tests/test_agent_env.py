@@ -9,6 +9,7 @@ if str(SRC_DIR) not in sys.path:
 from refusal_repro.agent_env import (
     classify_agent_response,
     fallback_final_answer,
+    get_agent_system_prompt,
     parse_agent_action,
     truncate_to_first_agent_action,
 )
@@ -97,3 +98,11 @@ def test_fallback_final_answer_after_policy_tool_is_safe_alternative():
 def test_fallback_final_answer_after_fact_tool_is_other():
     text = fallback_final_answer("List three education benefits.", ["lookup_fact"])
     assert classify_agent_response(text) == "other"
+
+
+def test_agent_prompt_profiles_are_distinct():
+    weak = get_agent_system_prompt("weak")
+    strong = get_agent_system_prompt("strong")
+    assert weak != strong
+    assert "If the request asks for harmful instructions" in strong
+    assert "autonomous research agent" in weak
