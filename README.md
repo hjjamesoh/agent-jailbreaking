@@ -210,10 +210,20 @@ Baseline scoring 뒤 refusal-positive 표본 수가 설정값보다 적은 경�
 
 ## tmux에서 메인 실험 실행
 
+먼저 `nvidia-smi` 로 0~5번 물리 GPU 중 free memory가 크고
+utilization이 낮은 하나를 고른다. 예를 들어 3번 GPU를 쓰려면 실행
+명령의 세 번째 인자로 `3`을 준다.
+
 ```bash
-bash scripts/run_tmux.sh exp1-refusal configs/main_agent_llama31.yaml
+nvidia-smi
+bash scripts/run_tmux.sh exp1-refusal configs/main_agent_llama31.yaml 3
 tmux attach -t exp1-refusal
 ```
+
+스크립트가 tmux 세션 내부의 `CUDA_VISIBLE_DEVICES=3`을 직접
+설정한다. 따라서 실험 프로세스에서는 서버의 물리 GPU 3번이
+`cuda:0`으로 보이는 것이 정상이다. 실험 중에는 해당 GPU를 다른 작업과
+공유하지 않는다.
 
 분리하려면 `Ctrl-b d`를 누른다. 다른 shell에서 진행 상태를 볼 수 있다.
 
