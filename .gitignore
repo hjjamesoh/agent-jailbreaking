@@ -8,10 +8,13 @@ env/
 .env
 .env.*
 
+data/raw/
+data/processed/
 runs/
+tmp/
+artifacts/
+checkpoints/
 *.log
-
-experiments/exp0_llm_refusal_dir/data/paper_splits/
 
 .ipynb_checkpoints/
 .pytest_cache/
@@ -20,3 +23,4 @@ experiments/exp0_llm_refusal_dir/data/paper_splits/
 
 *.pt
 *.safetensors
+*.bin

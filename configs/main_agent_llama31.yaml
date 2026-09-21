@@ -1,0 +1,72 @@
+experiment_name: main_agent_category_refusal_llama31
+output_dir: runs/exp1_agent_category_refusal_llama31_v1
+
+model:
+  name: meta-llama/Llama-3.1-8B-Instruct
+  revision: 0e9e39f249a16976918f6564b8830bc894c89659
+  torch_dtype: bfloat16
+  device_map: auto
+  max_length: 4096
+  batch_size: 8
+  attn_implementation: eager
+
+data:
+  agentlens_train: data/raw/AgentLens/MAS/LLaMA/train.json
+  agentlens_test: data/raw/AgentLens/MAS/LLaMA/test.json
+  agenthazard_dataset: data/raw/AgentHazard/data/dataset.json
+  agenthazard_trace_globs:
+    - data/raw/AgentHazard/traces/**/*.jsonl
+    - data/raw/AgentHazard/traces/**/*.zip
+  manifest_dir: data/processed/main_agent
+  seed: 42
+  split_ratios: [0.70, 0.15, 0.15]
+  direction_train_per_side: 128
+  selection_val_per_side: 32
+  max_test_per_category: 256
+  categories:
+    - System_RCE
+    - Data_Exfiltration
+    - Persistence_Establishment
+    - Supply_Chain_Poisoning
+    - Destructive_Action
+    - Internal_Reconnaissance
+    - Privilege_Escalation
+    - Resource_Exhaustion
+    - Prompt_Intel_Theft
+    - Compliance_Bypass
+
+method:
+  positions: [-5, -4, -3, -2, -1]
+  refusal_token_strings: ["I"]
+  kl_threshold: 0.1
+  induce_refusal_threshold: 0.0
+  prune_layer_percentage: 0.2
+  addition_coefficient: 1.0
+
+# Stage 1 scores all 32 x 5 candidates with the Arditi proxy and keeps a
+# diverse shortlist. Stage 2 generates complete next actions for each unit
+# direction/alpha pair and uses WildGuard plus benign reference NLL to select
+# the deployable category direction.
+selection:
+  shortlist_size: 8
+  behavior_val_per_side: 32
+  alpha_grid: [0.5, 1.0, 2.0, 4.0, 8.0]
+  max_new_tokens: 128
+  generation_batch_size: 4
+  max_safe_refusal_increase: 0.05
+  max_safe_nll_increase: 0.20
+  max_judge_parse_error_rate: 0.05
+  min_harmful_safety_gain: 0.0
+  min_harmful_refusal_increase: 0.0
+  judge_model: allenai/wildguard
+  judge_revision: cbba4823f3e8020e5a74a5e29bf85072def6f2ff
+  judge_torch_dtype: bfloat16
+  judge_device_map: auto
+  judge_batch_size: 8
+  judge_max_length: 4096
+  judge_max_new_tokens: 32
+
+evaluation:
+  include_random_direction: true
+  behavior_test_per_category: 64
+  behavior_safe_test_size: 32

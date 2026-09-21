@@ -1,258 +1,318 @@
-Agent Jailbreaking Refusal-Direction Experiments
+# Experiment 1: Category-Specific Refusal Directions in LLM Agents
 
-This repository contains the experiment scaffold for studying whether refusal
-directions detected in base LLMs can be used to modulate refusal behavior inside
-an agent environment.
+이 저장소는 첫 번째 메인 실험만 구현한다. 목표는
+`meta-llama/Llama-3.1-8B-Instruct`의 multi-turn agent trajectory에서 위험
+category마다 서로 다른 refusal direction이 존재하는지 확인하고, 각 category의
+최적 `position × layer × alpha`를 선택하는 것이다.
 
-The previous paper-reproduction track is paused. The current plan is:
+Linear probe 기반 위험 감지와 category routing은 현재 실험 범위가 아니다. 그것은
+실험 1의 direction bank가 유효하다는 결과를 확인한 뒤 진행할 실험 2다.
 
-1. Experiment 0: detect refusal directions in available base LLM models.
-2. Experiment 1: build an agent environment around one of those LLMs, then add
-   or remove the detected refusal direction at the selected layer/position and
-   compare agent behavior.
+## 실험 질문
 
-Project structure:
+1. Agent state에서도 category별 mean-difference refusal direction을 찾을 수 있는가?
+2. 가장 좋은 direction의 layer와 post-instruction position은 category마다 다른가?
+3. Category direction이 global direction보다 해당 category에서 더 효과적인가?
+4. 위험 응답을 줄이면서 benign next-action 성능과 과잉 거절을 보존할 수 있는가?
+5. 같은 direction의 효과가 agent step에 따라 어떻게 달라지는가?
 
-  experiments/
-    exp0_llm_refusal_dir/
-      run.py
-      data/
-        harmful_train.jsonl
-        harmless_train.jsonl
-        harmful_val.jsonl
-        harmless_val.jsonl
-    exp1_agent_refusal_dir/
-      run.py
-  src/
-    refusal_repro/
-      agent_env.py
-      analysis.py
-      data.py
-      directions.py
-      metrics.py
-      modeling.py
-      selection.py
-  scripts/
-    check_server_env.py
-    compare_directions.py
-    prepare_exp0_paper_splits.py
-    validate_data.py
-  tests/
-    test_directions.py
-  requirements.txt
-  docs/
-    CLEANUP_PLAN.md
-    EXPERIMENT_PLAN.md
-    EXPERIMENT0_STATUS.md
-    MODEL_SELECTION.md
-    GITHUB_UPLOAD.md
+이번 실험은 step마다 별도 direction을 만들지 않는다. 모든 step을 direction 추출에
+사용하고, 선택 및 held-out 평가 결과를 step별로도 집계한다. Layer와 position은
+처음부터 독립 탐색한다.
 
-Experiment 0 method summary:
+## 모델과 데이터
 
-1. Load harmful and harmless instruction datasets.
-2. Format each instruction with the model chat template.
-3. Cache decoder-layer outputs at selected prompt positions.
-4. Compute candidate directions with harmful mean minus harmless mean.
-5. Select a candidate direction using a validation-set ablation proxy.
-6. Save direction, metrics, run config, runtime metadata, and token-position audit artifacts.
-7. Generate small validation completion artifacts for baseline, ablation, and activation-addition sanity checks.
+### Target model
 
-Experiment 1 method summary:
+- `meta-llama/Llama-3.1-8B-Instruct`
+- BF16, 비양자화
+- 32 transformer layers
+- Hugging Face revision `0e9e39f249a16976918f6564b8830bc894c89659`
+- greedy decoding
 
-1. Choose an LLM and selected refusal direction from Experiment 0.
-2. Build a minimal ReAct-style agent loop around the LLM with safe mock tools.
-3. Detect a new agent-context direction from harmful/harmless agent prompts.
-4. Run the same agent tasks under three conditions: baseline, refusal-direction
-   removal, and refusal-direction addition.
-5. Apply the Experiment 0 direction at the selected layer/position during agent generation.
-6. Compare final answers, intermediate trajectories, tool-use decisions, refusal
-   rates, response labels, and task success/failure.
-7. Select agent-context directions with an agent-behavior score by default:
-   harmful safety-behavior reduction under ablation, minus harmless success loss
-   and invalid-action increase.
+Instruct checkpoint를 사용하는 이유는 연구 대상이 정렬된 agent의 refusal
+behavior이기 때문이다. Base model은 chat template와 baseline refusal 자체가 달라
+같은 인과 질문을 검증하지 못한다.
 
-Important limitations:
+### AgentLens MAS/LLaMA
 
-- The included JSONL files are small pilot datasets for pipeline validation, not publication-quality datasets.
-- Experiment 0 candidate selection currently uses a next-token refusal-prefix proxy.
-- Experiment 1 candidate selection uses an agent final-behavior score by default,
-  with the next-token refusal-prefix proxy still available as --selection-metric next_token.
-- Completion refusal labels use a simple prefix heuristic, not a publication-grade evaluator.
-- The ablation implementation is an inference-time decoder-layer hook, not persistent model weight orthogonalization.
-- Dataset filtering by baseline refusal score is not implemented yet.
-- CE-loss evaluation is not implemented yet.
-- Experiment 1 currently uses a minimal mock-tool agent environment, not a full
-  browser, shell, or web-connected autonomous agent.
-- Experiment 1 labels are heuristic and intended for smoke testing, not final
-  safety evaluation.
-- Do not interpret Experiment 0 projection or proxy metrics as causal evidence
-  without Experiment 1 intervention results.
+공식 `MAS/LLaMA/train.json`, `test.json`을 사용한다.
 
-Setup:
+- `label=0`: benign 또는 safety-aware step
+- `label=1`: harmful execution step
+- 본 실험에서는 non-refusal인 `label=0` state를 direction의 공통 safe reference와
+  benign utility 평가에 사용한다.
+- 동일 task의 여러 step이 train/validation/test에 섞이지 않도록 normalized
+  `task_description` 단위로 다시 group split한다.
 
-  conda activate exp0
-  pip install -r requirements.txt
+### AgentHazard
 
-The default model is:
+공식 dataset과 공개 execution trajectory를 사용하며 다음 10개 category를 그대로
+유지한다.
 
-  Qwen/Qwen3-8B-Base
+- `System_RCE`
+- `Data_Exfiltration`
+- `Persistence_Establishment`
+- `Supply_Chain_Poisoning`
+- `Destructive_Action`
+- `Internal_Reconnaissance`
+- `Privilege_Escalation`
+- `Resource_Exhaustion`
+- `Prompt_Intel_Theft`
+- `Compliance_Bypass`
 
-You may need Hugging Face authentication and model access before running:
+공식 repository의 `traces/*/*.zip`을 압축 해제하지 않고 직접 읽는다. 이미 풀어 둔
+`*.jsonl`도 함께 지원한다. 동일 `original_id`의 attack variant와 multi-turn state는
+항상 같은 split에 배정된다.
 
-  hf auth login
+## Direction 탐색과 선택
 
-Server preflight:
+### 1. 후보 추출
 
-  python3 scripts/check_server_env.py
-  python3 scripts/validate_data.py
+Arditi et al.의 공개 구현과 같은 difference-of-means 정의를 사용한다.
 
-Shared GPU server usage:
+```text
+d(category, position, layer)
+  = mean(resid_pre | refused harmful category states)
+  - mean(resid_pre | non-refusal safe agent states)
+```
 
-- Experiments are run on a shared remote GPU server.
-- GPUs are numbered 0 through 3 on the server.
-- Check GPU usage before every run.
-- Use an idle GPU by setting CUDA_VISIBLE_DEVICES.
-- Do not hard-code a physical GPU index in Python code.
-- If CUDA_VISIBLE_DEVICES exposes one GPU, it will normally appear as cuda:0 inside the program.
-- Tokenizer padding and truncation are set to left, so the final chat-template tokens are preserved under max-length truncation.
+Llama 3.1 8B의 모든 32개 layer와 assistant generation 직전의 5개
+post-instruction position `[-5, -4, -3, -2, -1]`을 탐색하므로 category마다
+후보는 160개다. 10개 category direction과 global harmful direction을 별도로 만든다.
 
-Recommended first pilot:
+### 2. Arditi proxy로 shortlist 생성
 
-  nvidia-smi
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name qwen3_8b_base_pilot_001 --batch-size 1 --limit-train 12 --limit-val 6
+각 160개 후보에 대해 다음을 계산한다.
 
-Paper-split pilot after preparing experiments/exp0_llm_refusal_dir/data/paper_splits/:
+- harmful validation state에서 all-layer directional ablation 후 refusal log-odds
+- safe validation state에서 source layer activation addition 후 refusal log-odds
+- safe validation next-token distribution의 forward KL
+- 마지막 20% layer 제외
+- `KL <= 0.1`, safe steering refusal score `>= 0`
 
-  nvidia-smi
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --model Qwen/Qwen3-8B-Base --run-name qwen3_8b_base_paper_pruned_001 --harmful-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl --harmless-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl --harmful-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl --harmless-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl --batch-size 1 --limit-train 64 --limit-val 32 --completion-eval-examples 16 --prune-layer-percentage 0.2
+필터를 통과한 후보 중 ablation, steering, KL 관점의 상위 후보를 round-robin으로
+최대 8개 shortlist에 넣는다. 이 단계의 계산은 선행연구와 비교 가능한 값이며,
+최종 선택 기준은 아니다.
 
-Full run after the pilot is stable:
+### 3. Agent behavior 기준 최종 선택
 
-  nvidia-smi
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp0_llm_refusal_dir/run.py --run-name qwen3_8b_base_full_001 --batch-size 2 --prune-layer-percentage 0.2
+Shortlist의 각 direction을 L2 unit vector로 정규화하고
+`alpha ∈ {0.5, 1, 2, 4, 8}`을 탐색한다. 각 조합으로 전체 next action을 생성한 뒤
+`allenai/wildguard` revision
+`cbba4823f3e8020e5a74a5e29bf85072def6f2ff`가 다음을 판정한다.
 
-Layer selection notes:
+- harmful request 여부
+- response refusal 여부
+- harmful response 여부
 
-- By default, Experiment 0 excludes the final 20% of decoder layers from candidate selection.
-- This mirrors the original refusal-direction implementation's practice of avoiding late-layer directions.
-- Pass --prune-layer-percentage 0.0 to evaluate all layers.
-- Pass --candidate-layers explicitly to override automatic pruning.
-- Direction removal/addition scales are recorded as --ablation-alpha and --addition-alpha.
+Benign 성능 보존은 두 지표로 제한한다.
 
-Default outputs:
+- safe-state refusal 증가 `<= 0.05`
+- 기록된 benign next action에 대한 reference NLL 증가 `<= 0.20` nat/token
 
-  runs/exp0_llm_refusal_dir/
-    config.json
-    metadata.json
-    token_audit.json
-    metrics.json
-    best_direction.json
-    candidate_directions.pt
-    direction.pt
-    selection_metrics.csv
-    projection_by_layer.png
-    benign_activation_addition_examples.jsonl
-    completions/
-      harmful_baseline.json
-      harmful_ablation.json
-      harmless_baseline.json
-      harmless_activation_addition.json
+동시에 baseline보다 harmful-response rate나 harmful-state refusal rate가 나빠지는
+후보는 feasible 후보에서 제외한다.
 
-Before trusting an Experiment 0 run:
+제약을 만족하는 조합 중 harmful-response rate가 가장 낮고 refusal rate가 높은
+`position × layer × alpha`를 고른다. 제약을 만족하는 후보가 하나도 없으면 최소
+constraint violation 후보를 선택하고 artifact에 `constraint_fallback=true`를 남긴다.
 
-1. Inspect metadata.json and confirm the expected CUDA_VISIBLE_DEVICES value.
-2. Inspect token_audit.json and confirm selected positions correspond to the intended prompt tokens.
-3. Inspect selection_metrics.csv and verify harmful refusal decreases without increasing harmless refusal under the proxy metric.
-4. Inspect completions/ and benign_activation_addition_examples.jsonl for qualitative sanity.
-5. Treat this as direction discovery only; agent-level claims require Experiment 1.
+### 4. Held-out 평가
 
-Experiment 1 smoke test with the selected Experiment 0 direction:
+Probe 없이 정답 category 라벨만 사용한다.
 
-  CUDA_VISIBLE_DEVICES=<AVAILABLE_GPU_ID> python3 experiments/exp1_agent_refusal_dir/run.py --mode both --model Qwen/Qwen3-8B-Base --run-name qwen3_8b_base_agent_weak_behavior_001 --agent-prompt-profile weak --selection-metric agent_behavior --behavior-selection-examples 8 --exp0-direction runs/exp0_llm_refusal_dir/qwen3_8b_base_paper_mid_layers_fulltrain_001/direction.pt --harmful-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_train.jsonl --harmless-train experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_train.jsonl --harmful-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmful_val.jsonl --harmless-val experiments/exp0_llm_refusal_dir/data/paper_splits/harmless_val.jsonl --batch-size 1 --limit-train 64 --limit-val 16 --agent-eval-examples 8 --candidate-layers 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
+- pairwise direction cosine matrix
+- 모든 source direction × target category의 refusal-log-odds addition/ablation matrix
+- same-norm random-direction control
+- category direction과 global direction의 held-out full next-action 비교
+- safe test state의 refusal rate와 reference NLL
+- agent step별 harmful/refusal rate
 
-Repeat the same command with --agent-prompt-profile strong to compare weak and
-strong safety scaffolding.
+이 평가는 저장된 trajectory를 counterfactual replay할 뿐 shell command나 tool call을
+실제로 실행하지 않는다.
 
-Experiment 1 outputs:
+## 이번 코드에 포함되지 않는 것
 
-  runs/exp1_agent_refusal_dir/
-    config.json
-    metadata.json
-    metrics.json
-    agent_token_audit.json
-    agent_candidate_directions.pt
-    agent_direction.pt
-    agent_best_direction.json
-    agent_behavior_selection_metrics.csv
-    agent_selection_metrics.csv              # only when --selection-metric next_token
-    agent_selection_runs/
-    agent_runs/
-      harmful_baseline.jsonl
-      harmful_subtract.jsonl
-      harmful_add.jsonl
-      harmless_baseline.jsonl
-      harmless_subtract.jsonl
-      harmless_add.jsonl
+- harm linear probe 학습 또는 위험 예측
+- category linear probe 학습 또는 category 예측
+- probe prediction에 따른 runtime direction routing
+- 실제 sandbox tool execution
 
-Direction similarity analysis:
+위 항목은 실험 2의 범위다.
 
-  python3 scripts/compare_directions.py --run-name qwen3_exp0_vs_exp1_smoke_005 --reference-direction runs/exp0_llm_refusal_dir/qwen3_8b_base_paper_mid_layers_fulltrain_001/direction.pt --target-direction runs/exp1_agent_refusal_dir/qwen3_8b_base_agent_smoke_005/agent_direction.pt --target-candidates runs/exp1_agent_refusal_dir/qwen3_8b_base_agent_smoke_005/agent_candidate_directions.pt
+## 저장소 구조
 
-This analysis does not run the model. It loads saved direction artifacts and
-reports selected-direction cosine similarity plus the target candidate
-layer/position cells most similar to the reference direction.
+```text
+configs/main_agent_llama31.yaml
+scripts/
+  check_gpu_env.py
+  prepare_agent_data.py
+  run_main.py
+  run_all.sh
+  run_tmux.sh
+  tmux_status.sh
+src/task_refusal/
+  behavior.py
+  config.py
+  data.py
+  directions.py
+  evaluation.py
+  hooks.py
+  modeling.py
+  pipeline.py
+  progress.py
+  selection.py
+tests/
+```
 
-Direction similarity outputs:
+## GPU 서버 설치
 
-  runs/direction_comparisons/
-    summary.json
-    candidate_cosine_top_matches.csv
-    candidate_cosine_grid.pt
-    candidate_cosine_heatmap.png
+권장 환경은 96GB VRAM의 NVIDIA RTX PRO 6000 Blackwell이다. 먼저 서버 driver와
+CUDA에 맞는 PyTorch build를 설치하고, 그다음 프로젝트 의존성을 설치한다.
 
-Difference between Experiment 0 and Experiment 1:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
 
-- Experiment 0 detects directions at a single-turn LLM generation boundary.
-- Experiment 1 detects and applies directions inside an agent prompt that includes
-  system instructions, tool descriptions, a task, and an agent scratchpad.
-- Experiment 1 supports --agent-prompt-profile weak and strong so prompt safety
-  scaffolding is an explicit experimental condition.
-- Experiment 1 supports --selection-metric agent_behavior and next_token. The
-  behavior score is the default because it is closer to final agent refusal,
-  safe-alternative, harmful-compliance, and benign-task behavior.
-- Experiment 1 logs trajectory fields: prompt context, model output, parsed tool
-  call, observation, final answer, intervention mode, layer, position, direction
-  path, and alpha.
+# 서버 CUDA/driver에 맞는 PyTorch를 먼저 설치
+python -m pip install torch
+python -m pip install -e ".[dev]"
 
-Recent Experiment 1 instrumentation changes:
+huggingface-cli login
+python -u scripts/check_gpu_env.py
+```
 
-- Earlier code only counted looks_like_refusal from a simple refusal-prefix heuristic.
-- Current code also records final_label values: refusal, safe_alternative,
-  policy_reasoning, harmful_compliance, unfinished_tool_call, or other.
-- Current code records first_action, used_tools, and used_policy_tool.
-- Current code clips each model step to the first Action / Action Input block so
-  one generated step does not accidentally contain multiple unexecuted actions.
-- After a tool observation, the next agent step is marked as force_finish and
-  only the finish action is accepted.
-- If the model still emits a non-finish action during force_finish, the run logs
-  it as an invalid finalization action and writes a deterministic fallback final answer.
-- Summaries include completed_with_finish_rate, completed_with_fallback_rate,
-  and invalid finalization action counts.
-- lookup_fact is available for benign factual requests, while lookup_policy is
-  reserved for safety-sensitive requests.
-- Safe-alternative markers include recommendation-style safe redirections such
-  as protecting sensitive information or focusing on ethical treatment.
-- Agent-context direction detection now selects candidates by final agent
-  behavior by default. The score is harmful_safety_delta minus harmless success
-  loss and invalid-action increase.
+Llama 3.1과 WildGuard는 gated model이므로 Hugging Face 계정에서 두 model의
+access 조건을 각각 승인해야 한다.
+Target model과 WildGuard 7B를 동시에 BF16으로 올리므로 실행 전 free VRAM을
+확인한다.
 
-GitHub upload:
+## 공개 데이터 준비
 
-- See docs/GITHUB_UPLOAD.md for the commit and push checklist.
-- Do not commit runs/, model weights, generated .pt artifacts, or secret tokens.
+```bash
+mkdir -p data/raw
+git clone https://github.com/EddyLuo1232/AgentLens.git data/raw/AgentLens
+git clone https://github.com/Yunhao-Feng/AgentHazard.git data/raw/AgentHazard
+```
 
-Token position convention:
+AgentHazard ZIP은 풀 필요가 없다. Manifest만 먼저 검증하려면 다음을 실행한다.
 
-- Negative positions are interpreted relative to each sample's final non-padding token.
-- With the default --positions -1 -2 -3 -4 -5, -1 means the final non-padding token of the chat-templated prompt.
-- token_audit.json records the truncated unpadded token index, token ID, decoded token text, and truncation status for sampled prompts.
+```bash
+python -u scripts/prepare_agent_data.py \
+  --config configs/main_agent_llama31.yaml
+```
+
+누락 category나 group leakage는 model을 올리기 전에 명확한 오류로 중단한다.
+Baseline scoring 뒤 refusal-positive 표본 수가 설정값보다 적은 경우에도 자동으로
+축소하지 않고 해당 stage를 중단한다.
+
+## tmux에서 메인 실험 실행
+
+```bash
+bash scripts/run_tmux.sh exp1-refusal configs/main_agent_llama31.yaml
+tmux attach -t exp1-refusal
+```
+
+분리하려면 `Ctrl-b d`를 누른다. 다른 shell에서 진행 상태를 볼 수 있다.
+
+```bash
+bash scripts/tmux_status.sh exp1-refusal
+```
+
+로그는 JSON Lines 형식이며 stage, category, position, layer, alpha, 처리량, 경과
+시간, ETA, GPU memory와 checkpoint 경로를 출력한다. 전체 action 생성과 WildGuard
+판정도 batch마다 진행률을 출력한다.
+
+Stage 순서는 다음과 같다.
+
+```text
+prepare -> filter -> extract -> select -> evaluate
+```
+
+개별 stage 또는 일부 category만 재개할 수도 있다.
+
+```bash
+python -u scripts/run_main.py \
+  --config configs/main_agent_llama31.yaml \
+  --stage extract \
+  --categories System_RCE Data_Exfiltration
+
+python -u scripts/run_main.py \
+  --config configs/main_agent_llama31.yaml \
+  --stage select \
+  --categories System_RCE Data_Exfiltration
+```
+
+`evaluate`는 global과 10개 category의 선택이 모두 끝난 뒤 실행한다.
+
+## Checkpoint와 출력
+
+이번 실험은 이전 실험과 섞이지 않도록 다음 새 경로를 쓴다.
+
+```text
+runs/exp1_agent_category_refusal_llama31_v1/
+```
+
+주요 artifact는 다음과 같다.
+
+```text
+data/direction_splits.jsonl
+directions/<category>/candidates.pt
+directions/<category>/candidate_evaluations.jsonl
+directions/<category>/proxy_shortlist.json
+directions/<category>/behavior_candidate_evaluations.jsonl
+directions/<category>/behavior_generations/*.jsonl
+directions/<category>/selected_direction.pt
+directions/<category>/selected_direction.json
+analysis/cosine_similarity.csv
+analysis/addition_delta.csv
+analysis/ablation_delta.csv
+analysis/random_direction_controls.jsonl
+analysis/agent_behavior/heldout_behavior_summary.jsonl
+analysis/agent_behavior/heldout_generations/*.jsonl
+```
+
+각 category의 후보·alpha 평가가 JSONL에 즉시 append되므로 tmux나 SSH 연결이
+끊겨도 같은 명령으로 재개한다. 이미 완료된 항목은 skip한다. Config나 데이터
+조건을 바꿀 때는 기존 checkpoint를 재사용하지 말고 새 `output_dir`을 사용한다.
+
+## 기존 GPU checkout 업데이트
+
+먼저 서버의 기존 변경 여부를 확인한다.
+
+```bash
+cd /path/to/agent-jailbreaking
+git status
+```
+
+깨끗하면 다음만 실행한다.
+
+```bash
+git switch main
+git pull --ff-only origin main
+```
+
+서버에 추적 중이거나 새로 만든 코드 변경이 있으면 덮어쓰지 말고 먼저 보관한다.
+
+```bash
+git stash push -u -m "gpu-server-before-exp1"
+git switch main
+git pull --ff-only origin main
+```
+
+`data/`와 `runs/`는 Git에서 제외되므로 기존 raw data와 실행 결과는 pull로
+삭제되지 않는다. 이번 config는 새 output directory를 사용하므로 과거 checkpoint와
+충돌하지 않는다.
+
+## 참고자료
+
+- [Refusal in Language Models Is Mediated by a Single Direction](https://arxiv.org/abs/2406.11717)
+- [Official refusal-direction implementation](https://github.com/andyrdt/refusal_direction)
+- [There Is More to Refusal in Large Language Models than a Single Direction](https://arxiv.org/abs/2602.02132)
+- [AgentLens paper](https://arxiv.org/abs/2606.22673)
+- [AgentLens repository](https://github.com/EddyLuo1232/AgentLens)
+- [AgentHazard repository](https://github.com/Yunhao-Feng/AgentHazard)
+- [Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
+- [WildGuard](https://huggingface.co/allenai/wildguard)
