@@ -102,6 +102,9 @@ def test_agenthazard_reads_official_zip_archives(tmp_path: Path) -> None:
             archive.writestr(
                 f"model/trajectory_{row['id']}.jsonl", json.dumps(trace) + "\n"
             )
+        # Official archives can contain macOS AppleDouble resource forks whose
+        # names end in .jsonl even though their contents are binary.
+        archive.writestr("__MACOSX/model/._trajectory_1.jsonl", b"\x00\xa3\x81\x00")
     states = load_agenthazard_states(
         dataset_path,
         (str(archive_path),),

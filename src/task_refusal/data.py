@@ -9,7 +9,7 @@ import re
 import zipfile
 from collections import Counter
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Sequence
 
 from task_refusal.config import DataConfig
@@ -164,10 +164,21 @@ def _trajectory_messages(row: dict[str, Any], turn_index: int) -> tuple[Message,
 def _iter_trajectory_rows(trace_paths: Sequence[Path]):
     """Yield official AgentHazard JSONL records without extracting ZIP archives."""
     for path in trace_paths:
+        normalized_parts = PurePosixPath(str(path).replace("\\", "/")).parts
+        if "__MACOSX" in normalized_parts or any(
+            part.startswith("._") for part in normalized_parts
+        ):
+            continue
         if path.suffix.lower() == ".zip":
             with zipfile.ZipFile(path) as archive:
                 members = sorted(
-                    name for name in archive.namelist() if name.lower().endswith(".jsonl")
+                    name
+                    for name in archive.namelist()
+                    if name.lower().endswith(".jsonl")
+                    and "__MACOSX" not in PurePosixPath(name).parts
+                    and not any(
+                        part.startswith("._") for part in PurePosixPath(name).parts
+                    )
                 )
                 for member in members:
                     with archive.open(member) as raw_handle, io.TextIOWrapper(
