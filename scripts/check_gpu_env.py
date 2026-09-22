@@ -63,6 +63,14 @@ def main() -> None:
     except Exception as exc:
         report["torch"] = {"error": repr(exc)}
         fatal_error = "PyTorch import failed. Install the CUDA-enabled PyTorch build first."
+    try:
+        import google.protobuf
+
+        report["protobuf"] = {"version": google.protobuf.__version__}
+    except Exception as exc:
+        report["protobuf"] = {"error": repr(exc)}
+        if fatal_error is None:
+            fatal_error = "protobuf import failed. Reinstall the project dependencies."
     if fatal_error is not None:
         report["fatal_error"] = fatal_error
     print(json.dumps(report, indent=2), flush=True)
