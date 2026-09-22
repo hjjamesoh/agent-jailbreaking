@@ -71,6 +71,14 @@ def main() -> None:
         report["protobuf"] = {"error": repr(exc)}
         if fatal_error is None:
             fatal_error = "protobuf import failed. Reinstall the project dependencies."
+    try:
+        import sentencepiece
+
+        report["sentencepiece"] = {"version": sentencepiece.__version__}
+    except Exception as exc:
+        report["sentencepiece"] = {"error": repr(exc)}
+        if fatal_error is None:
+            fatal_error = "sentencepiece import failed. Reinstall the project dependencies."
     if fatal_error is not None:
         report["fatal_error"] = fatal_error
     print(json.dumps(report, indent=2), flush=True)

@@ -13,6 +13,7 @@ dependencies = [
   "protobuf>=5,<8",
   "PyYAML>=6.0",
   "safetensors>=0.4",
+  "sentencepiece>=0.2.2,<0.3",
   "torch>=2.7,<3",
   "transformers>=4.45,<5",
 ]
