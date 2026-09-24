@@ -28,11 +28,20 @@ def cosine_similarity_matrix(directions: Mapping[str, Tensor]) -> dict[str, dict
 def write_matrix_csv(path: str | Path, matrix: Mapping[str, Mapping[str, float]]) -> None:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    columns = list(matrix)
+    row_names = list(matrix)
+    columns = list(matrix[row_names[0]]) if row_names else []
+    expected_columns = set(columns)
+    for row_name in row_names:
+        actual_columns = set(matrix[row_name])
+        if actual_columns != expected_columns:
+            raise ValueError(
+                f"Matrix row {row_name!r} has inconsistent columns: "
+                f"expected {columns}, got {list(matrix[row_name])}"
+            )
     with output.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["source", *columns])
-        for row_name in columns:
+        for row_name in row_names:
             writer.writerow([row_name, *(matrix[row_name][column] for column in columns)])
 
 
