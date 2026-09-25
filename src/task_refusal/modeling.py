@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
 
 import torch
 from torch import Tensor
@@ -112,10 +111,7 @@ class LlamaHarness:
             chunks.append(logits.detach().to(device="cpu", dtype=torch.float32))
             if progress is not None:
                 progress.advance(
-                    item=(
-                        f"states={start}:"
-                        f"{min(start + effective_batch_size, len(contexts))}"
-                    )
+                    item=(f"states={start}:{min(start + effective_batch_size, len(contexts))}")
                 )
         if not chunks:
             raise ValueError("Cannot score an empty context list.")
@@ -236,9 +232,13 @@ class LlamaHarness:
             target = labels[:, 1:]
             mask = target.ne(-100)
             safe_target = target.masked_fill(~mask, 0)
-            token_log_probs = logits[:, :-1, :].float().log_softmax(dim=-1).gather(
-                -1, safe_target.unsqueeze(-1)
-            ).squeeze(-1)
+            token_log_probs = (
+                logits[:, :-1, :]
+                .float()
+                .log_softmax(dim=-1)
+                .gather(-1, safe_target.unsqueeze(-1))
+                .squeeze(-1)
+            )
             total_nll += float((-token_log_probs.masked_select(mask)).sum().cpu())
             total_tokens += int(mask.sum().cpu())
             progress.advance(
@@ -265,10 +265,10 @@ class LlamaHarness:
             batch_contexts = contexts[start : start + effective_batch_size]
             cache: list[Tensor | None] = [None] * self.n_layers
 
-            def make_hook(layer: int):
+            def make_hook(layer: int, batch_cache: list[Tensor | None] = cache):
                 def hook(_module, inputs):
                     activation = inputs[0] if isinstance(inputs, tuple) else inputs
-                    cache[layer] = activation[:, -1, :].detach().to("cpu", torch.float32)
+                    batch_cache[layer] = activation[:, -1, :].detach().to("cpu", torch.float32)
 
                 return hook
 
@@ -288,15 +288,74 @@ class LlamaHarness:
             raise ValueError("Cannot cache activations for an empty context list.")
         return torch.cat(chunks, dim=0)
 
+    @torch.inference_mode()
+    def resid_pre_at_position(
+        self,
+        contexts: Sequence[Context],
+        position: int,
+        *,
+        batch_size: int | None = None,
+        progress_stage: str = "activation_cache",
+    ) -> Tensor:
+        """Return CPU float32 resid-pre activations as [examples, layers, hidden].
+
+        ``position`` is a negative index into the rendered chat prompt. Using one
+        semantic post-instruction position keeps the comparison aligned across
+        variable-length chat and agent contexts.
+        """
+        if position >= 0:
+            raise ValueError("Activation position must be a negative token index.")
+        if not contexts:
+            raise ValueError("Cannot cache activations for an empty context list.")
+        effective_batch_size = batch_size or self.config.batch_size
+        chunks: list[Tensor] = []
+        total = (len(contexts) + effective_batch_size - 1) // effective_batch_size
+        progress = ProgressTracker(
+            progress_stage,
+            total,
+            {"states": len(contexts), "position": position},
+        )
+        for start in range(0, len(contexts), effective_batch_size):
+            batch_contexts = contexts[start : start + effective_batch_size]
+            cache: list[Tensor | None] = [None] * self.n_layers
+
+            def make_hook(layer: int, batch_cache: list[Tensor | None] = cache):
+                def hook(_module, inputs):
+                    activation = inputs[0] if isinstance(inputs, tuple) else inputs
+                    if activation.shape[1] < abs(position):
+                        raise ValueError(
+                            f"Prompt has {activation.shape[1]} tokens but position "
+                            f"{position} was requested."
+                        )
+                    batch_cache[layer] = (
+                        activation[:, position, :].detach().to("cpu", torch.float32)
+                    )
+
+                return hook
+
+            hooks = [(block, make_hook(layer)) for layer, block in enumerate(self.blocks)]
+            batch = self.tokenize(batch_contexts)
+            with temporary_hooks(pre_hooks=hooks):
+                self.model(
+                    input_ids=batch.input_ids,
+                    attention_mask=batch.attention_mask,
+                    use_cache=False,
+                )
+            if any(value is None for value in cache):
+                raise RuntimeError("Failed to cache one or more transformer layers.")
+            chunks.append(torch.stack([value for value in cache if value is not None], dim=1))
+            progress.advance(
+                item=f"states={start}:{min(start + effective_batch_size, len(contexts))}"
+            )
+        return torch.cat(chunks, dim=0)
+
 
 def refusal_log_odds(logits: Tensor, refusal_token_ids: Tensor, epsilon: float = 1e-8) -> Tensor:
     probabilities = logits.to(torch.float64).softmax(dim=-1)
     token_ids = refusal_token_ids.to(probabilities.device)
     refusal_probability = probabilities[:, token_ids].sum(dim=-1)
     non_refusal_probability = 1.0 - refusal_probability
-    return torch.log(refusal_probability + epsilon) - torch.log(
-        non_refusal_probability + epsilon
-    )
+    return torch.log(refusal_probability + epsilon) - torch.log(non_refusal_probability + epsilon)
 
 
 def forward_kl_divergence(
@@ -312,8 +371,5 @@ def forward_kl_divergence(
     intervention_probs = intervention.softmax(dim=-1)
     return (
         reference_probs
-        * (
-            torch.log(reference_probs + epsilon)
-            - torch.log(intervention_probs + epsilon)
-        )
+        * (torch.log(reference_probs + epsilon) - torch.log(intervention_probs + epsilon))
     ).sum(dim=-1)

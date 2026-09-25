@@ -1,0 +1,30 @@
+experiment_name: h2_llm_vs_agent_step_refusal_llama31
+output_dir: runs/h2_llm_vs_agent_step_refusal_llama31_v1
+
+model:
+  name: meta-llama/Llama-3.1-8B-Instruct
+  revision: 0e9e39f249a16976918f6564b8830bc894c89659
+  torch_dtype: bfloat16
+  device_map: auto
+  max_length: 4096
+  batch_size: 8
+  attn_implementation: eager
+
+data:
+  agentlens_train: data/raw/AgentLens/MAS/LLaMA/train.json
+  agentlens_test: data/raw/AgentLens/MAS/LLaMA/test.json
+  llm_split_dir: data/raw/refusal_direction/dataset/splits
+  seed: 42
+  split_ratios: [0.70, 0.15, 0.15]
+  max_train_per_side: 128
+  max_test_per_side: 64
+  min_train_per_side: 16
+  min_test_per_side: 8
+
+method:
+  # Arditi et al. reported layer 12 / position -5 for Llama-3-8B-Instruct.
+  # H2 keeps this external coordinate fixed for every LLM and agent direction.
+  position: -5
+  primary_layer: 12
+  cache_dtype: float16
+  bootstrap_repetitions: 500

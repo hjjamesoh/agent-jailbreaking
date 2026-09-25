@@ -1,328 +1,229 @@
-# Experiment 1: Category-Specific Refusal Directions in LLM Agents
+# H2: LLM vs Agent-Step Refusal Directions
 
-이 저장소는 첫 번째 메인 실험만 구현한다. 목표는
-`meta-llama/Llama-3.1-8B-Instruct`의 multi-turn agent trajectory에서 위험
-category마다 서로 다른 refusal direction이 존재하는지 확인하고, 각 category의
-최적 `position × layer × alpha`를 선택하는 것이다.
+현재 메인 실험은 `meta-llama/Llama-3.1-8B-Instruct`에서 일반 chat 입력으로 구한
+refusal direction과 AgentLens trajectory의 각 step에서 구한 direction을 비교한다.
 
-Linear probe 기반 위험 감지와 category routing은 현재 실험 범위가 아니다. 그것은
-실험 1의 direction bank가 유효하다는 결과를 확인한 뒤 진행할 실험 2다.
+이번 실행은 representation 비교만 수행한다. 다음 항목은 포함하지 않는다.
 
-## 실험 질문
+- category별 direction
+- AgentHazard
+- linear probe와 runtime routing
+- activation addition/ablation
+- full response generation과 WildGuard
+- 실제 tool 실행
 
-1. Agent state에서도 category별 mean-difference refusal direction을 찾을 수 있는가?
-2. 가장 좋은 direction의 layer와 post-instruction position은 category마다 다른가?
-3. Category direction이 global direction보다 해당 category에서 더 효과적인가?
-4. 위험 응답을 줄이면서 benign next-action 성능과 과잉 거절을 보존할 수 있는가?
-5. 같은 direction의 효과가 agent step에 따라 어떻게 달라지는가?
+기존 category 실험 코드는 이전 결과 재현을 위해 남아 있지만, 현재 실행 진입점은
+`scripts/run_h2.py`와 `configs/h2_agent_step_llama31.yaml`이다.
 
-이번 실험은 step마다 별도 direction을 만들지 않는다. 모든 step을 direction 추출에
-사용하고, 선택 및 held-out 평가 결과를 step별로도 집계한다. Layer와 position은
-처음부터 독립 탐색한다.
+## 연구 질문
 
-## 모델과 데이터
+1. 일반 LLM refusal direction과 전체 agent direction은 같은가?
+2. Agent trajectory의 step별 direction은 LLM direction과 얼마나 유사한가?
+3. Step이 진행되면서 direction의 cosine, norm, held-out 분리 성능이 변하는가?
+4. LLM direction과 agent-step direction 중 어느 쪽이 held-out agent state를 더 잘
+   분리하는가?
 
-### Target model
+이번 결과는 인과적으로 검증된 최종 refusal direction이 아니라
+`candidate agent-step refusal directions`다. 안정적인 차이가 관찰된 뒤 별도
+addition/ablation 실험으로 인과성을 검증한다.
 
-- `meta-llama/Llama-3.1-8B-Instruct`
-- BF16, 비양자화
-- 32 transformer layers
-- Hugging Face revision `0e9e39f249a16976918f6564b8830bc894c89659`
-- greedy decoding
+## 고정 좌표
 
-Instruct checkpoint를 사용하는 이유는 연구 대상이 정렬된 agent의 refusal
-behavior이기 때문이다. Base model은 chat template와 baseline refusal 자체가 달라
-같은 인과 질문을 검증하지 못한다.
-
-### AgentLens MAS/LLaMA
-
-공식 `MAS/LLaMA/train.json`, `test.json`을 사용한다.
-
-- `label=0`: benign 또는 safety-aware step
-- `label=1`: harmful execution step
-- 본 실험에서는 non-refusal인 `label=0` state를 direction의 공통 safe reference와
-  benign utility 평가에 사용한다.
-- 동일 task의 여러 step이 train/validation/test에 섞이지 않도록 normalized
-  `task_description` 단위로 다시 group split한다.
-
-### AgentHazard
-
-공식 dataset과 공개 execution trajectory를 사용하며 다음 10개 category를 그대로
-유지한다.
-
-- `System_RCE`
-- `Data_Exfiltration`
-- `Persistence_Establishment`
-- `Supply_Chain_Poisoning`
-- `Destructive_Action`
-- `Internal_Reconnaissance`
-- `Privilege_Escalation`
-- `Resource_Exhaustion`
-- `Prompt_Intel_Theft`
-- `Compliance_Bypass`
-
-공식 repository의 `traces/*/*.zip`을 압축 해제하지 않고 직접 읽는다. 이미 풀어 둔
-`*.jsonl`도 함께 지원한다. 동일 `original_id`의 attack variant와 multi-turn state는
-항상 같은 split에 배정된다.
-
-## Direction 탐색과 선택
-
-### 1. 후보 추출
-
-Arditi et al.의 공개 구현과 같은 difference-of-means 정의를 사용한다.
+Arditi et al.이 Llama-3-8B-Instruct에서 보고한 좌표를 외부 기준으로 고정한다.
 
 ```text
-d(category, position, layer)
-  = mean(resid_pre | refused harmful category states)
-  - mean(resid_pre | non-refusal safe agent states)
+layer = 12 (0-based)
+position = -5 = <|eot_id|>
 ```
 
-Llama 3.1 8B의 모든 32개 layer와 assistant generation 직전의 5개
-post-instruction position `[-5, -4, -3, -2, -1]`을 탐색하므로 category마다
-후보는 160개다. 10개 category direction과 global harmful direction을 별도로 만든다.
+모든 LLM 및 agent direction의 primary 비교는 같은 layer와 position에서 수행한다.
+추가로 position `-5`에서 32개 layer 전체의 same-layer cosine을 기록하여 agent에서
+표현 위치가 이동하는지 탐색한다. Agent 결과를 보고 primary 좌표를 다시 고르지 않는다.
 
-### 2. Arditi proxy로 shortlist 생성
+## 데이터와 direction 정의
 
-각 160개 후보에 대해 다음을 계산한다.
+### LLM reference
 
-- harmful validation state에서 all-layer directional ablation 후 refusal log-odds
-- safe validation state에서 source layer activation addition 후 refusal log-odds
-- safe validation next-token distribution의 forward KL
-- 마지막 20% layer 제외
-- `KL <= 0.1`, safe steering refusal score `>= 0`
-
-필터를 통과한 후보 중 ablation, steering, KL 관점의 상위 후보를 round-robin으로
-최대 8개 shortlist에 넣는다. 이 단계의 계산은 선행연구와 비교 가능한 값이며,
-최종 선택 기준은 아니다.
-
-### 3. Agent behavior 기준 최종 선택
-
-Shortlist의 각 direction을 L2 unit vector로 정규화하고
-`alpha ∈ {0.5, 1, 2, 4, 8}`을 탐색한다. 각 조합으로 전체 next action을 생성한 뒤
-`allenai/wildguard` revision
-`cbba4823f3e8020e5a74a5e29bf85072def6f2ff`가 다음을 판정한다.
-
-- harmful request 여부
-- response refusal 여부
-- harmful response 여부
-
-Benign 성능 보존은 두 지표로 제한한다.
-
-- safe-state refusal 증가 `<= 0.05`
-- 기록된 benign next action에 대한 reference NLL 증가 `<= 0.20` nat/token
-
-동시에 baseline보다 harmful-response rate나 harmful-state refusal rate가 나빠지는
-후보는 feasible 후보에서 제외한다.
-
-제약을 만족하는 조합 중 harmful-response rate가 가장 낮고 refusal rate가 높은
-`position × layer × alpha`를 고른다. 제약을 만족하는 후보가 하나도 없으면 최소
-constraint violation 후보를 선택하고 artifact에 `constraint_fallback=true`를 남긴다.
-
-### 4. Held-out 평가
-
-Probe 없이 정답 category 라벨만 사용한다.
-
-- pairwise direction cosine matrix
-- 모든 source direction × target category의 refusal-log-odds addition/ablation matrix
-- same-norm random-direction control
-- category direction과 global direction의 held-out full next-action 비교
-- safe test state의 refusal rate와 reference NLL
-- agent step별 harmful/refusal rate
-
-이 평가는 저장된 trajectory를 counterfactual replay할 뿐 shell command나 tool call을
-실제로 실행하지 않는다.
-
-## 이번 코드에 포함되지 않는 것
-
-- harm linear probe 학습 또는 위험 예측
-- category linear probe 학습 또는 category 예측
-- probe prediction에 따른 runtime direction routing
-- 실제 sandbox tool execution
-
-위 항목은 실험 2의 범위다.
-
-## 저장소 구조
+Arditi et al. 공식 저장소의 기존 split을 그대로 내려받는다.
 
 ```text
-configs/main_agent_llama31.yaml
-scripts/
-  check_gpu_env.py
-  prepare_agent_data.py
-  run_main.py
-  run_all.sh
-  run_tmux.sh
-  tmux_status.sh
-src/task_refusal/
-  behavior.py
-  config.py
-  data.py
-  directions.py
-  evaluation.py
-  hooks.py
-  modeling.py
-  pipeline.py
-  progress.py
-  selection.py
-tests/
+data/raw/refusal_direction/dataset/splits/
+  harmful_train.json
+  harmful_test.json
+  harmless_train.json
+  harmless_test.json
 ```
 
-## GPU 서버 설치
+```text
+r_llm = mean(resid_pre | harmful chat)
+      - mean(resid_pre | harmless chat)
+```
 
-권장 환경은 96GB VRAM의 NVIDIA RTX PRO 6000 Blackwell이다. 먼저 서버 driver와
-CUDA에 맞는 PyTorch build를 설치하고, 그다음 프로젝트 의존성을 설치한다.
+Train은 side당 최대 128개, test는 side당 최대 64개를 seed 42로 고정 추출한다.
+
+### Agent direction
+
+AgentLens 공식 `MAS/LLaMA/train.json`, `test.json`만 사용한다.
+
+- `label=1`: harmful execution state
+- `label=0`: benign/safety-aware state
+- normalized task description 단위로 train/validation/test를 다시 분리하여 동일 task가
+  서로 다른 split에 들어가지 않게 한다.
+- 각 step 안에서 label 1과 label 0을 같은 수로 뽑는다.
+
+```text
+r_agent_step_s = mean(resid_pre | label=1, step=s)
+               - mean(resid_pre | label=0, step=s)
+```
+
+`agent_all`은 eligible step별 balanced sample을 합쳐 계산한다. 따라서 데이터가 많은
+특정 step이나 긴 trajectory가 전체 direction을 지배하지 않는다.
+
+## 산출 지표
+
+- LLM, Agent-all, 각 Agent-step direction의 primary cosine matrix
+- position `-5`에서 32개 layer 전체의 pairwise cosine과 norm
+- held-out projection AUROC, Cohen's d, harmful/benign mean difference
+- LLM direction을 agent step에 투영한 cross-domain 성능
+- agent-step direction을 LLM 및 다른 step에 투영한 성능
+- train direction bootstrap cosine 95% interval, 500회
+
+Linear probe를 학습하지 않는다. Projection AUROC는 학습된 분류기가 아니라 고정된
+한 direction의 held-out 분리 성능이다.
+
+## 서버 설치 및 데이터 준비
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
+cd ~/agent-jailbreaking
+git switch main
+git pull --ff-only origin main
 
-# 서버 CUDA/driver에 맞는 PyTorch를 먼저 설치
-python -m pip install torch
+source .venv/bin/activate
 python -m pip install -e ".[dev]"
 
+# 공식 Arditi split 4개를 다운로드하고 JSON 구조를 검증한다.
+python -u scripts/prepare_h2_data.py
+
+# AgentLens가 이미 없다면 한 번만 실행한다.
+git clone https://github.com/EddyLuo1232/AgentLens.git data/raw/AgentLens
+```
+
+Llama 3.1 gated access와 Hugging Face 로그인이 필요하다.
+
+```bash
 huggingface-cli login
 python -u scripts/check_gpu_env.py
 ```
 
-Llama 3.1과 WildGuard는 gated model이므로 Hugging Face 계정에서 두 model의
-access 조건을 각각 승인해야 한다.
-Target model과 WildGuard 7B를 동시에 BF16으로 올리므로 실행 전 free VRAM을
-확인한다.
+## tmux 실행
 
-## 공개 데이터 준비
+물리 GPU 0을 사용하는 예시는 다음과 같다.
 
 ```bash
-mkdir -p data/raw
-git clone https://github.com/EddyLuo1232/AgentLens.git data/raw/AgentLens
-git clone https://github.com/Yunhao-Feng/AgentHazard.git data/raw/AgentHazard
+bash scripts/run_h2_tmux.sh \
+  h2-agent-step \
+  configs/h2_agent_step_llama31.yaml \
+  0
 ```
 
-AgentHazard ZIP은 풀 필요가 없다. Manifest만 먼저 검증하려면 다음을 실행한다.
+상태 확인:
 
 ```bash
-python -u scripts/prepare_agent_data.py \
-  --config configs/main_agent_llama31.yaml
+bash scripts/tmux_status.sh h2-agent-step
 ```
 
-누락 category나 group leakage는 model을 올리기 전에 명확한 오류로 중단한다.
-Baseline scoring 뒤 refusal-positive 표본 수가 설정값보다 적은 경우에도 자동으로
-축소하지 않고 해당 stage를 중단한다.
-
-## tmux에서 메인 실험 실행
-
-먼저 `nvidia-smi` 로 0~5번 물리 GPU 중 free memory가 크고
-utilization이 낮은 하나를 고른다. 예를 들어 3번 GPU를 쓰려면 실행
-명령의 세 번째 인자로 `3`을 준다.
+실시간 확인:
 
 ```bash
-nvidia-smi
-bash scripts/run_tmux.sh exp1-refusal configs/main_agent_llama31.yaml 3
-tmux attach -t exp1-refusal
+watch -n 10 'bash scripts/tmux_status.sh h2-agent-step'
 ```
 
-스크립트가 tmux 세션 내부의 `CUDA_VISIBLE_DEVICES=3`을 직접
-설정한다. 따라서 실험 프로세스에서는 서버의 물리 GPU 3번이
-`cuda:0`으로 보이는 것이 정상이다. 실험 중에는 해당 GPU를 다른 작업과
-공유하지 않는다.
-
-분리하려면 `Ctrl-b d`를 누른다. 다른 shell에서 진행 상태를 볼 수 있다.
+`watch`를 종료하려면 `Ctrl-C`를 누른다. tmux에 직접 접속하려면:
 
 ```bash
-bash scripts/tmux_status.sh exp1-refusal
+tmux attach -t h2-agent-step
 ```
 
-로그는 JSON Lines 형식이며 stage, category, position, layer, alpha, 처리량, 경과
-시간, ETA, GPU memory와 checkpoint 경로를 출력한다. 전체 action 생성과 WildGuard
-판정도 batch마다 진행률을 출력한다.
+분리는 `Ctrl-b d`다. SSH 또는 VS Code를 종료해도 tmux 내부 실험은 계속된다.
 
-Stage 순서는 다음과 같다.
+## Stage와 재개
 
 ```text
-prepare -> filter -> extract -> select -> evaluate
+prepare -> extract -> analyze
 ```
 
-개별 stage 또는 일부 category만 재개할 수도 있다.
+- `prepare`: 데이터 개수와 step별 label 균형을 검사하고 eligible step을 확정한다.
+- `extract`: LLM/AgentLens activation을 GPU에서 추출해 checkpoint로 저장한다.
+- `analyze`: CPU에서 direction, cosine, projection, bootstrap을 계산한다.
+
+개별 실행:
 
 ```bash
-python -u scripts/run_main.py \
-  --config configs/main_agent_llama31.yaml \
-  --stage extract \
-  --categories System_RCE Data_Exfiltration
-
-python -u scripts/run_main.py \
-  --config configs/main_agent_llama31.yaml \
-  --stage select \
-  --categories System_RCE Data_Exfiltration
+python -u scripts/run_h2.py --config configs/h2_agent_step_llama31.yaml --stage prepare
+python -u scripts/run_h2.py --config configs/h2_agent_step_llama31.yaml --stage extract
+python -u scripts/run_h2.py --config configs/h2_agent_step_llama31.yaml --stage analyze
 ```
 
-`evaluate`는 global과 10개 category의 선택이 모두 끝난 뒤 실행한다.
+Activation cache가 존재하면 extract stage는 해당 항목을 건너뛴다. Config의 model,
+position, 데이터 또는 split 조건을 바꿀 때는 새 `output_dir`을 사용한다.
 
-## Checkpoint와 출력
-
-이번 실험은 이전 실험과 섞이지 않도록 다음 새 경로를 쓴다.
+## 출력
 
 ```text
-runs/exp1_agent_category_refusal_llama31_v1/
+runs/h2_llm_vs_agent_step_refusal_llama31_v1/
+  resolved_config.json
+  data_summary.json
+  position_label.json
+  cache/
+    llm_train_harmful.pt
+    llm_train_harmless.pt
+    llm_test_harmful.pt
+    llm_test_harmless.pt
+    agent_train.pt
+    agent_train_metadata.json
+    agent_test.pt
+    agent_test_metadata.json
+  directions/
+    step_directions.pt
+  analysis/
+    layerwise_cosine.csv
+    primary_cosine.csv
+    projection_metrics.csv
+    bootstrap_cosine.csv
+    summary.json
 ```
 
-주요 artifact는 다음과 같다.
+로그는 batch마다 JSON Lines로 출력되며 완료량, 백분율, 경과 시간, ETA, GPU memory와
+checkpoint 경로를 포함한다.
+
+## 예상 시간
+
+RTX PRO 6000 Blackwell 96GB 한 장, batch size 8, 모델이 이미 Hugging Face cache에
+있는 조건의 보수적인 예상이다.
 
 ```text
-data/direction_splits.jsonl
-directions/<category>/candidates.pt
-directions/<category>/candidate_evaluations.jsonl
-directions/<category>/proxy_shortlist.json
-directions/<category>/behavior_candidate_evaluations.jsonl
-directions/<category>/behavior_generations/*.jsonl
-directions/<category>/selected_direction.pt
-directions/<category>/selected_direction.json
-analysis/cosine_similarity.csv
-analysis/addition_delta.csv
-analysis/ablation_delta.csv
-analysis/random_direction_controls.jsonl
-analysis/agent_behavior/heldout_behavior_summary.jsonl
-analysis/agent_behavior/heldout_generations/*.jsonl
+데이터 준비/검증:       1-3분
+모델 로드:              1-3분
+LLM activation 추출:    2-6분
+AgentLens activation:  10-25분
+CPU 분석/bootstrap:     2-8분
+합계:                  약 20-45분
 ```
 
-각 category의 후보·alpha 평가가 JSONL에 즉시 append되므로 tmux나 SSH 연결이
-끊겨도 같은 명령으로 재개한다. 이미 완료된 항목은 skip한다. Config나 데이터
-조건을 바꿀 때는 기존 checkpoint를 재사용하지 말고 새 `output_dir`을 사용한다.
+AgentLens context가 대부분 4096 token 부근이거나 모델을 처음 다운로드하는 경우
+45-75분까지 늘어날 수 있다. WildGuard와 autoregressive 128-token 생성이 없으므로
+이전 category 실험처럼 수 시간 이상 걸리는 구조는 아니다.
 
-## 기존 GPU checkout 업데이트
-
-먼저 서버의 기존 변경 여부를 확인한다.
+## 검증
 
 ```bash
-cd /path/to/agent-jailbreaking
-git status
+pytest
+ruff check .
 ```
-
-깨끗하면 다음만 실행한다.
-
-```bash
-git switch main
-git pull --ff-only origin main
-```
-
-서버에 추적 중이거나 새로 만든 코드 변경이 있으면 덮어쓰지 말고 먼저 보관한다.
-
-```bash
-git stash push -u -m "gpu-server-before-exp1"
-git switch main
-git pull --ff-only origin main
-```
-
-`data/`와 `runs/`는 Git에서 제외되므로 기존 raw data와 실행 결과는 pull로
-삭제되지 않는다. 이번 config는 새 output directory를 사용하므로 과거 checkpoint와
-충돌하지 않는다.
 
 ## 참고자료
 
 - [Refusal in Language Models Is Mediated by a Single Direction](https://arxiv.org/abs/2406.11717)
 - [Official refusal-direction implementation](https://github.com/andyrdt/refusal_direction)
-- [There Is More to Refusal in Large Language Models than a Single Direction](https://arxiv.org/abs/2602.02132)
-- [AgentLens paper](https://arxiv.org/abs/2606.22673)
+- [Applying Refusal-Vector Ablation to Llama 3.1 70B Agents](https://arxiv.org/abs/2410.10871)
 - [AgentLens repository](https://github.com/EddyLuo1232/AgentLens)
-- [AgentHazard repository](https://github.com/Yunhao-Feng/AgentHazard)
-- [Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
-- [WildGuard](https://huggingface.co/allenai/wildguard)
