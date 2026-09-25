@@ -81,6 +81,8 @@ def test_h2_config_uses_fixed_paper_coordinate() -> None:
     assert config.method.primary_layer == 12
     assert config.method.position == -5
     assert config.model.name == "meta-llama/Llama-3.1-8B-Instruct"
+    assert config.data.split_ratios == (0.7, 0.0, 0.3)
+    assert config.data.min_test_per_side == 6
 
 
 def test_analyze_writes_complete_h2_artifacts(tmp_path: Path) -> None:

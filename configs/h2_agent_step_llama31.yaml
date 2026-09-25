@@ -15,11 +15,15 @@ data:
   agentlens_test: data/raw/AgentLens/MAS/LLaMA/test.json
   llm_split_dir: data/raw/refusal_direction/dataset/splits
   seed: 42
-  split_ratios: [0.70, 0.15, 0.15]
+  # H2 has no validation-time model or hyperparameter selection. Keep every
+  # held-out task in one group-disjoint test set instead of wasting a val split.
+  split_ratios: [0.70, 0.00, 0.30]
   max_train_per_side: 128
   max_test_per_side: 64
   min_train_per_side: 16
-  min_test_per_side: 8
+  # With the official AgentLens support this retains steps 1-5. Later steps
+  # lack enough label-0 trajectories for a defensible same-step comparison.
+  min_test_per_side: 6
 
 method:
   # Arditi et al. reported layer 12 / position -5 for Llama-3-8B-Instruct.

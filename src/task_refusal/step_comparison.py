@@ -342,11 +342,6 @@ class StepComparisonPipeline:
                 >= self.config.data.min_test_per_side
             )
             (eligible_steps if eligible else skipped_steps).append(step)
-        if not eligible_steps:
-            raise ValueError(
-                "No AgentLens step has enough harmful and benign train/test states. "
-                "Lower the minimums only after inspecting the count summary."
-            )
         summary = {
             "experiment": self.config.experiment_name,
             "agentlens": {
@@ -377,6 +372,16 @@ class StepComparisonPipeline:
         }
         _write_json(self.output_dir / "data_summary.json", summary)
         _write_json(self.output_dir / "resolved_config.json", asdict(self.config))
+        if not eligible_steps:
+            log_event(
+                "h2_prepare_failed_no_eligible_steps",
+                skipped_steps=skipped_steps,
+                count_summary=str(self.output_dir / "data_summary.json"),
+            )
+            raise ValueError(
+                "No AgentLens step has enough harmful and benign train/test states. "
+                f"Inspect {self.output_dir / 'data_summary.json'} before changing the minimums."
+            )
         log_event(
             "h2_prepare_complete",
             eligible_steps=eligible_steps,

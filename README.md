@@ -67,8 +67,9 @@ AgentLens 공식 `MAS/LLaMA/train.json`, `test.json`만 사용한다.
 
 - `label=1`: harmful execution state
 - `label=0`: benign/safety-aware state
-- normalized task description 단위로 train/validation/test를 다시 분리하여 동일 task가
-  서로 다른 split에 들어가지 않게 한다.
+- normalized task description 단위로 70/30 train/test를 다시 분리하여 동일 task가
+  서로 다른 split에 들어가지 않게 한다. H2에는 validation-time 선택이 없으므로 별도
+  validation split을 만들지 않는다.
 - 각 step 안에서 label 1과 label 0을 같은 수로 뽑는다.
 
 ```text
@@ -78,6 +79,10 @@ r_agent_step_s = mean(resid_pre | label=1, step=s)
 
 `agent_all`은 eligible step별 balanced sample을 합쳐 계산한다. 따라서 데이터가 많은
 특정 step이나 긴 trajectory가 전체 direction을 지배하지 않는다.
+
+현재 AgentLens 표본 분포에서는 train label별 최소 16개, test label별 최소 6개를
+동시에 만족하는 step 1-5가 분석 대상이다. Step 6 이후는 label 0 trajectory가 너무
+적으므로 방향이 없다는 결론을 내리지 않고 `insufficient support`로 제외한다.
 
 ## 산출 지표
 
