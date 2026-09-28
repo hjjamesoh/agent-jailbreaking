@@ -86,10 +86,32 @@ class AgentHarness(LlamaHarness):
     def tokenize(self, contexts):
         if not contexts:
             raise ValueError("No agent contexts to tokenize.")
-        rendered = [self._render(context) for context in contexts]
-        batch = self.tokenizer(
-            rendered, return_tensors="pt", padding=True,
-            truncation=False, add_special_tokens=False,
+        # Ask the model's own chat template for token IDs directly. Rendering
+        # to text and passing that value through the fast tokenizer a second
+        # time is both unnecessary and, for some multi-turn Llama tool chats,
+        # can return a nested value that Rust tokenizers rejects as an invalid
+        # TextEncodeInput.
+        encoded: list[list[int]] = []
+        for context in contexts:
+            token_ids = self.tokenizer.apply_chat_template(
+                list(context.messages),
+                tools=[tool["function"] for tool in context.tools],
+                tokenize=True, add_generation_prompt=True,
+            )
+            if isinstance(token_ids, torch.Tensor):
+                token_ids = token_ids.detach().cpu().tolist()
+            if (isinstance(token_ids, list) and len(token_ids) == 1
+                    and isinstance(token_ids[0], list)):
+                token_ids = token_ids[0]
+            if not (isinstance(token_ids, list)
+                    and all(isinstance(token_id, int) for token_id in token_ids)):
+                raise TypeError(
+                    "Agent chat template did not return one flat token-id list; "
+                    f"received {type(token_ids).__name__}."
+                )
+            encoded.append(token_ids)
+        batch = self.tokenizer.pad(
+            {"input_ids": encoded}, padding=True, return_tensors="pt",
         )
         lengths = batch.attention_mask.sum(dim=1)
         if int(lengths.max()) > self.config.max_length:

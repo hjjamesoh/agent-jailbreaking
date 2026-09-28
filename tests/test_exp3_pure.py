@@ -10,6 +10,7 @@ from task_refusal.causal_selection import (
 from task_refusal.exp3_review import render_review_file
 from task_refusal.exp3_stats import holm_adjust, paired_effect, paired_sign_pvalue
 from task_refusal.agent_protocol import parse_tool_call
+from task_refusal.agent_simulator import _validate_arguments
 
 
 def row(task_id, category, tool):
@@ -22,6 +23,29 @@ def row(task_id, category, tool):
 
 
 class Exp3PureTests(unittest.TestCase):
+    @staticmethod
+    def _schema(property_schema):
+        return {"function": {"parameters": {
+            "type": "object",
+            "properties": {"value": property_schema},
+            "required": ["value"],
+        }}}
+
+    def test_tool_argument_union_types(self):
+        schema = self._schema({"type": ["string", "integer"]})
+        _validate_arguments(schema, {"value": "123"})
+        _validate_arguments(schema, {"value": 123})
+        with self.assertRaisesRegex(ValueError, "wrong type"):
+            _validate_arguments(schema, {"value": []})
+
+        nullable = self._schema({"type": ["string", "null"]})
+        _validate_arguments(nullable, {"value": None})
+
+    def test_json_number_does_not_accept_boolean(self):
+        schema = self._schema({"type": ["integer", "null"]})
+        with self.assertRaisesRegex(ValueError, "must not be boolean"):
+            _validate_arguments(schema, {"value": True})
+
     def test_strict_tool_parser(self):
         self.assertEqual(parse_tool_call('{"name":"search_google","arguments":{"query":"x"}}'),
                          ("search_google", {"query": "x"}))

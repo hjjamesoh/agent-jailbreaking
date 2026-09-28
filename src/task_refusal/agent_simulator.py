@@ -64,13 +64,29 @@ def _validate_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> No
         raise ValueError("Unknown tool argument.")
     types = {
         "string": str, "integer": int, "number": (int, float),
-        "boolean": bool, "array": list, "object": dict,
+        "boolean": bool, "array": list, "object": dict, "null": type(None),
     }
     for key, value in arguments.items():
         expected = properties[key].get("type")
-        if expected in types and not isinstance(value, types[expected]):
+        # JSON Schema permits a union such as ["string", "integer"] or
+        # ["string", "null"]. AgentAlign uses these union types. Looking the
+        # list up directly in ``types`` used to raise ``TypeError: unhashable
+        # type: list`` instead of validating the model's call.
+        if expected is None:
+            declared = []
+        elif isinstance(expected, str):
+            declared = [expected]
+        elif isinstance(expected, list) and all(isinstance(item, str) for item in expected):
+            declared = expected
+        else:
+            raise ValueError(f"Tool argument {key!r} has a malformed type schema.")
+        python_types = tuple(types[item] for item in declared if item in types)
+        if python_types and not isinstance(value, python_types):
             raise ValueError(f"Tool argument {key!r} has the wrong type.")
-        if expected in ("integer", "number") and isinstance(value, bool):
+        if (("integer" in declared or "number" in declared)
+                and isinstance(value, bool) and "boolean" not in declared):
+            # bool subclasses int in Python, but JSON Schema treats boolean as
+            # a distinct type unless it is explicitly included in the union.
             raise ValueError(f"Tool argument {key!r} must not be boolean.")
         if "enum" in properties[key] and value not in properties[key]["enum"]:
             raise ValueError(f"Tool argument {key!r} is outside the declared enum.")
