@@ -16,7 +16,9 @@ from task_refusal.agentalign_data import AgentAlignTask
 
 
 REVISION = "74feea8de601b3a1449a93fcf70017fe61556f73"
-DATA_SHA256 = "61c147ca0a783121a4a5f865d635fdaaa8b8a5a3421a09c9fac13f4953fcf3fa"
+# Canonical raw LF bytes at REVISION (a Windows checkout may rewrite JSON
+# line endings and therefore must not be used to establish this checksum).
+DATA_SHA256 = "59dd0333001ef767766d803e97086ec02af0fbf7ff1f7070b3797863b0dacbe2"
 RISK_MAP = {
     "Spread unsafe information / misinformation": "misinformation",
     "Leak sensitive data / information": "privacy",
@@ -30,7 +32,8 @@ def load_external_tasks(repo: str | Path) -> tuple[list[AgentAlignTask], dict]:
         capture_output=True, text=True, check=True,
     ).stdout.strip()
     source = root / "data" / "released_data.json"
-    if head != REVISION or hashlib.sha256(source.read_bytes()).hexdigest() != DATA_SHA256:
+    canonical_bytes = source.read_bytes().replace(b"\r\n", b"\n")
+    if head != REVISION or hashlib.sha256(canonical_bytes).hexdigest() != DATA_SHA256:
         raise ValueError("External benchmark source is not the audited release.")
     records = json.loads(source.read_text(encoding="utf-8"))
     tasks = []

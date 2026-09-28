@@ -20,7 +20,9 @@ from task_refusal.agentalign_data import (
 from task_refusal.progress import log_event
 
 SAFETYBENCH_REVISION = "74feea8de601b3a1449a93fcf70017fe61556f73"
-SAFETYBENCH_DATA_SHA256 = "61c147ca0a783121a4a5f865d635fdaaa8b8a5a3421a09c9fac13f4953fcf3fa"
+# Hash of the raw LF bytes at SAFETYBENCH_REVISION.  Do not compute this from
+# a Windows checkout: Git may rewrite JSON line endings to CRLF.
+SAFETYBENCH_DATA_SHA256 = "59dd0333001ef767766d803e97086ec02af0fbf7ff1f7070b3797863b0dacbe2"
 
 
 def _sha256(path: Path) -> str:
@@ -29,6 +31,11 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _sha256_normalized_lf(path: Path) -> str:
+    """Hash a Git text asset independent of checkout line-ending policy."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def main() -> None:
@@ -70,7 +77,7 @@ def main() -> None:
         ["git", "-c", f"safe.directory={external.resolve()}", "-C", str(external),
          "rev-parse", "HEAD"], capture_output=True, text=True, check=True,
     ).stdout.strip()
-    if external_head != SAFETYBENCH_REVISION or _sha256(
+    if external_head != SAFETYBENCH_REVISION or _sha256_normalized_lf(
         external / "data" / "released_data.json") != SAFETYBENCH_DATA_SHA256:
         raise ValueError("Agent-SafetyBench external release differs from the pinned source.")
     tasks = load_tasks(dataset)
