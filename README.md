@@ -1,4 +1,108 @@
-# H2: LLM vs Agent-Step Refusal Directions
+# Exp3: AgentAlign 기반 카테고리별 인과적 refusal-direction 탐색
+
+현재 메인 실험은 `configs/exp3_agentalign_llama31.yaml` / `scripts/run_exp3.py`다.
+과거 Exp1/H2 코드는 재현 목적으로 보존한다. H2 설명은 이 문서 아래에 남겨 두었다.
+
+이 재설계는 과거 결과의 실패 양상을 직접 겨냥한다. Exp1은 선택된 11개 중
+10개가 자체 feasibility 기준을 통과하지 못했지만 fallback 방향이 결과에
+포함되었다. 유해로 취급한 입력의 WildGuard 유해 판정률은 범주별로
+약 0.11–0.56이었고 파싱 실패도 있었다. H2는 step별 표현 분리만 보았으며
+후반 step의 held-out 쌍은 6–10개 수준이었다. 따라서 어느 결과도 실제
+agent에서 안전하게 거절을 유발하는 위치의 증거로 취급하지 않는다.
+
+## 실험에서 실제로 검증하는 것
+
+- 동일한 **Llama 3.1 8B Instruct**가 AgentAlign 유해·정상 과제를 모의 도구와
+  함께 처리한다. AgentAlign에 저장된 타 모델의 답변·도구 궤적은 activation이나
+  답안으로 사용하지 않는다.
+- 공개 원본 중 AgentAlign 자체의 정상 과제만 사용한다. ToolACE/Glaive 유래 정상
+  과제 4,010개는 출처 교란을 피하려고 제외한다. 유해 8개 카테고리와 정상 과제를
+  **노출된 도구 이름의 정확한 집합**으로 매칭하고, 각 도구 집합 안에서 같은 수로
+  뽑는다. 같은 추상 `pattern`은 train/val/test 중 한 곳에만 배정된다.
+- 방향 후보: `mean(resid_pre | harmful) - mean(resid_pre | benign)`.
+  초기 agent 의사결정 직전의 프롬프트에서 위치 `-5..-1`, 레이어 `0..31`을 모두
+  계산한다. 이 수식은 Arditi et al.의 방향 추출 방법과 같다. 사용 모델·도구·데이터
+  환경이 달라 최종 벡터가 같다고 가정하지 않는다.
+- 주 분석의 선택 가능 레이어는 `0..24`다. 원 연구의 마지막 20% 제외 규칙에 맞춘
+  것이다. `25..31`도 점수와 행동을 기록하지만 **탐색적 후기 레이어**로 별도
+  표시한다. 23–24번이 앞서면 22–26번 인접 후보를 추가로 검증하고
+  `boundary_sensitive=true`를 기록한다. 경계에서 골랐다는 사실을 한 레이어의
+  유일한 위치에 대한 증거로 취급하지 않는다.
+- 빠른 proxy 점수는 전체 160개 좌표를 훑는 데만 사용한다. 최종 후보 판정은 분리된
+  validation 과제에서 agent가 직접 생성한 최대 4단계 도구 사용 궤적으로 한다.
+  방향 **제거** 시 유해 요청 거절 감소, 방향 **추가** 시 유해 요청 거절 증가·위험
+  행동 감소, 정상 요청 과잉거절·성공률·유효한 모의 도구 사용률 손실 각각
+  최대 5%p를 모두 요구한다.
+  만족 후보가 없으면 **검증한 후보 중 채택할 방향 없음**이다. 과거 코드의
+  fallback은 쓰지 않는다.
+- 긴 proxy 스캔 전에 validation baseline으로 데이터·판정기 적합성을 검사한다.
+  유해/정상 요청의 독립적 위험 판정, 파싱·불확실률, 정상 과제의 실제 모의 도구
+  사용률을 점검한다. 정상 과제 도구 사용률이 50% 미만이면 단순 채팅 실험에
+  가까워지므로 해당 카테고리의 선택을 중단한다. `selection/*_judge_quality.json`에
+  원인을 남긴다. 이 검사는 agent 능력의 충분조건은 아니며 최소 관문이다.
+- 로컬 Qwen2.5-7B-Instruct 판정은 거절/위험 행동/정상 성공의 **추정**이다.
+  길이 제한으로 판정 입력을 자르지 않고 판정 불가로 표시하며, 파싱 실패·불확실
+  사례도 감추지 않는다. 모든 원문/도구 호출/도구 결과/
+  기본·추가·제거 답변을 `manual_review/*.html`에 나란히 남긴다. 사람이 검토하기
+  전까지 `human_confirmed=false`다. test의 paired bootstrap 95% CI와 카테고리
+  vs global 비교의 Holm 보정도 보고한다. 희소 카테고리의 5%p 비열등성은 CI가
+  넓어 결론 유보가 정상적인 결과일 수 있다.
+- `posttool_directions/`는 **동일 모델이 실제로 첫 도구를 호출한 후**의 2번째
+  의사결정 activation에서 만든 별도 방향 후보와 초기 방향 cosine을 기록한다.
+  첫 도구 호출이 유해/정상 양측에 충분하지 않으면 `not_estimable`로 남긴다.
+  이 후속-step 방향은 아직 인과적으로 선택하지 않으므로 최종 방어 방향이라고
+  부르지 않는다.
+- Agent-SafetyBench는 외부 전이 점검에 쓰되, 안전을 위해 공식 환경 Python을
+  실행하지 않는다. `misinformation`·`privacy`에 명확히 대응하는 500개 과제의
+  **첫 의사결정만** 도구 스키마와 함께 평가한다. 이것은 공식 전체 episode 점수나
+  실제 도구 실행 성능이 아니다. 다른 ASB 위험 범주를 임의로 8개 분류에 대응시키지
+  않는다.
+
+## GPU 서버 실행 (Docker 불필요)
+
+```bash
+cd ~/agent-jailbreaking
+git switch main
+git pull --ff-only origin main
+source .venv/bin/activate
+python -m pip install -e .
+nvidia-smi
+bash scripts/run_exp3_tmux.sh exp3-agent-refusal configs/exp3_agentalign_llama31.yaml 0
+```
+
+마지막 인자 `0`은 **물리 GPU 0번**이다. 다른 GPU를 사용할 때 이 숫자만 바꾼다.
+모델 접근 권한이 승인된 Hugging Face 계정으로 서버에서도 로그인되어 있어야 한다.
+
+```bash
+bash scripts/tmux_status.sh exp3-agent-refusal
+tmux attach -t exp3-agent-refusal
+```
+
+연결을 끊어도 tmux 세션은 유지된다. 재실행은 동일한 명령을 새 세션 이름으로
+시작하면 체크포인트에서 이어 간다. 설정이나 코드가 달라졌으면 기존 `output_dir`
+결과를 섞지 않고 새 디렉터리를 지정해야 한다. 데이터와 공식 모의 도구 코드는
+고정 리비전/체크섬으로 검사한다. 모의 도구는 실제 셸·메일·결제·네트워크 서비스에
+접속하지 않는다.
+
+주요 결과는 `runs/exp3_agentalign_category_causal_llama31_v1/` 안의
+`directions/`, `proxy/`, `selection/`, `test_report.json`, `manual_review/`,
+`posttool_directions/`, `external_first_decision/`에 기록된다.
+`selection/*.json`의 `selected: null`은 오류가 아니라 데이터·판정기 관문 또는
+인과 검증을 통과한 **shortlist 후보**가 없다는 결과다. 전체 좌표에 방향이
+존재하지 않는다는 증거는 아니다.
+
+## 구현·해석상의 제한
+
+이것은 GPU 서버에서 최초 실험이 실행되기 전에는 결과를 보증하지 않는다. 정상 과제
+성공은 공식 정답 판정기가 없어 로컬 모델의 추정이다. 모의 도구의 임의 출력을
+과제·step별로 고정해 조건 간 비교를 짝지었지만, 실제 API의 현실성까지 검증한
+것은 아니다. Proxy shortlist 밖의 좌표는 행동 검증을 하지 않으므로 “모든 160개
+좌표 중 전역 최적”이라고 해석해서는 안 된다. 리니어 프로브와 런타임 카테고리
+라우팅은 이번 실험에 포함되지 않는다.
+
+---
+
+# Historical H2: LLM vs Agent-Step Refusal Directions
 
 현재 메인 실험은 `meta-llama/Llama-3.1-8B-Instruct`에서 일반 chat 입력으로 구한
 refusal direction과 AgentLens trajectory의 각 step에서 구한 direction을 비교한다.
