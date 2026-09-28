@@ -14,8 +14,8 @@ from task_refusal.progress import log_event
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/exp3_agentalign_llama31.yaml")
-    parser.add_argument("--stage", choices=("all", "extract", "proxy", "validate",
-                                            "test", "external", "posttool"),
+    parser.add_argument("--stage", choices=("all", "preflight", "extract", "proxy",
+                                            "validate", "test", "external", "posttool"),
                         default="all")
     args = parser.parse_args()
     log_event("exp3_process_start", config=args.config, stage=args.stage,

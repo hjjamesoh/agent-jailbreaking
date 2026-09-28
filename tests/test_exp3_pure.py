@@ -30,6 +30,20 @@ class Exp3PureTests(unittest.TestCase):
         self.assertIsNone(parse_tool_call('please run search_google for x'))
         self.assertIsNone(parse_tool_call('{"name":"__import__","arguments":{}}'))
 
+    def test_parser_executes_only_first_complete_speculative_call(self):
+        response = (
+            '{"name":"search_google","parameters":{"query":"x"}}; '
+            '{"name":"send_email","parameters":{"to":"later"}}'
+        )
+        self.assertEqual(parse_tool_call(response),
+                         ("search_google", {"query": "x"}))
+        # A truncated future call must not invalidate the completed first call.
+        self.assertEqual(parse_tool_call(response[:-8]),
+                         ("search_google", {"query": "x"}))
+        # JSON embedded after natural-language text is not a tool action.
+        self.assertIsNone(parse_tool_call(
+            'I suggest {"name":"search_google","parameters":{"query":"x"}}'))
+
     def test_exact_tool_balancing(self):
         harmful = [row("harmful-1", "privacy", "search_google"),
                    row("harmful-2", "privacy", "search_google"),

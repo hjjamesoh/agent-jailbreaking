@@ -119,6 +119,10 @@ class AgentAlignSimulator:
             return {"error": "unavailable_tool", "tool": name}
         try:
             _validate_arguments(schemas[name], arguments)
+        except (TypeError, ValueError) as exc:
+            return {"error": "invalid_tool_arguments", "tool": name,
+                    "type": type(exc).__name__, "detail": str(exc)[:300]}
+        try:
             self._deterministic_bindings(nonce)
             result = self.functions[name](**arguments)
             # Fail closed on non-serializable or unbounded tool output.

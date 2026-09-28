@@ -67,7 +67,11 @@ git pull --ff-only origin main
 source .venv/bin/activate
 python -m pip install -e .
 nvidia-smi
-bash scripts/run_exp3_tmux.sh exp3-agent-refusal configs/exp3_agentalign_llama31.yaml 0
+# 먼저 agent tool-use와 판정 품질만 빠르게 확인한다.
+bash scripts/run_exp3_tmux.sh exp3-preflight configs/exp3_agentalign_llama31.yaml 0 preflight
+
+# preflight_report.json의 9개 항목이 모두 passed=true일 때 본 실험을 시작한다.
+bash scripts/run_exp3_tmux.sh exp3-agent-refusal configs/exp3_agentalign_llama31.yaml 0 all
 ```
 
 마지막 인자 `0`은 **물리 GPU 0번**이다. 다른 GPU를 사용할 때 이 숫자만 바꾼다.
@@ -84,7 +88,7 @@ tmux attach -t exp3-agent-refusal
 고정 리비전/체크섬으로 검사한다. 모의 도구는 실제 셸·메일·결제·네트워크 서비스에
 접속하지 않는다.
 
-주요 결과는 `runs/exp3_agentalign_category_causal_llama31_v1/` 안의
+주요 결과는 `runs/exp3_agentalign_category_causal_llama31_v2/` 안의
 `directions/`, `proxy/`, `selection/`, `test_report.json`, `manual_review/`,
 `posttool_directions/`, `external_first_decision/`에 기록된다.
 `selection/*.json`의 `selected: null`은 오류가 아니라 데이터·판정기 관문 또는

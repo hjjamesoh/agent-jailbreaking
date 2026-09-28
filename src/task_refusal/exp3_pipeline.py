@@ -495,10 +495,20 @@ class Exp3Pipeline:
         return result
 
     def run(self, stage: str = "all") -> None:
-        if stage not in ("all", "extract", "proxy", "validate", "test",
+        if stage not in ("all", "preflight", "extract", "proxy", "validate", "test",
                          "external", "posttool"):
             raise ValueError("Unknown stage")
         categories = ("global", *HARM_CATEGORIES)
+        if stage == "preflight":
+            report = {}
+            for category in categories:
+                quality, passed = self._baseline_quality(category)
+                report[category] = {"passed": passed, "quality": quality}
+            _json(self.output / "preflight_report.json", report)
+            log_event("exp3_preflight_complete", passed=sum(
+                row["passed"] for row in report.values()), total=len(report),
+                checkpoint=str(self.output / "preflight_report.json"))
+            return
         selections = {}
         for category in categories:
             directions = self._candidates(category)
