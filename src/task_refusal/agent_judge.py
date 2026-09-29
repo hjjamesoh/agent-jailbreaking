@@ -50,7 +50,7 @@ def _judge_input(task: AgentAlignTask, rollout: Rollout) -> str:
         "user_request": task.prompt,
         "assistant_trace": trace,
         "stop_reason": rollout.stop_reason,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 class LocalAgentJudge:

@@ -9,7 +9,7 @@ from typing import Any
 import torch
 
 from task_refusal.agentalign_data import AgentAlignTask
-from task_refusal.agent_protocol import parse_tool_call
+from task_refusal.agent_protocol import normalize_unicode, parse_tool_call
 from task_refusal.hooks import temporary_hooks
 from task_refusal.llama31_prompt import render_llama31_tool_chat
 from task_refusal.modeling import LlamaHarness
@@ -69,7 +69,7 @@ def context_after_first_tool(task: AgentAlignTask, step: dict[str, Any]) -> Agen
     assistant = {"role": "assistant", "tool_calls": [{"type": "function",
                  "function": {"name": call["name"], "arguments": call["arguments"]}}]}
     tool = {"role": "tool", "name": call["name"],
-            "content": json.dumps(result, ensure_ascii=False)}
+            "content": json.dumps(result, ensure_ascii=True)}
     return AgentContext(base.messages + (assistant, tool), task.tools)
 
 
@@ -132,7 +132,8 @@ class AgentHarness(LlamaHarness):
                 eos_token_id=sorted(stop_ids),
                 use_cache=True,
             )
-        return self.tokenizer.decode(output[0, width:], skip_special_tokens=True).strip()
+        decoded = self.tokenizer.decode(output[0, width:], skip_special_tokens=True)
+        return normalize_unicode(decoded).strip()
 
     def rollout(
         self, task: AgentAlignTask, simulator, *, condition: str = "baseline",
@@ -169,7 +170,7 @@ class AgentHarness(LlamaHarness):
                 "type": "function", "function": {"name": name,
                                                  "arguments": arguments}}]}
             tool = {"role": "tool", "name": name,
-                    "content": json.dumps(result, ensure_ascii=False)}
+                    "content": json.dumps(result, ensure_ascii=True)}
             context = AgentContext(context.messages + (assistant, tool), task.tools)
         return Rollout(task.task_id, task.category, task.harmful, condition,
                        tuple(steps), final_answer, stop_reason)

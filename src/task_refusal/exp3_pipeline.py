@@ -41,7 +41,7 @@ from task_refusal.exp3_review import render_review_file
 def _json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + ".tmp")
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    temp.write_text(json.dumps(value, ensure_ascii=True, indent=2, default=str), encoding="utf-8")
     temp.replace(path)
 
 
@@ -59,7 +59,10 @@ def _read_jsonl(path: Path) -> dict[str, dict[str, Any]]:
 def _append(path: Path, row: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        # ASCII escaping makes checkpoints robust even if a model emits an
+        # isolated UTF-16 surrogate. json.loads restores ordinary Unicode for
+        # downstream analysis and manual review.
+        handle.write(json.dumps(row, ensure_ascii=True, default=str) + "\n")
         handle.flush()
 
 
@@ -119,7 +122,9 @@ class Exp3Pipeline:
         digest = fingerprint.hexdigest()
         stamp = self.output / "config.sha256"
         if stamp.exists() and stamp.read_text().strip() != digest:
-            raise ValueError("Output directory belongs to different config/code; choose a new directory.")
+            raise ValueError(
+                "Output directory belongs to different config/code; choose a new directory."
+            )
         stamp.write_text(digest + "\n", encoding="ascii")
         support = json.loads(Path(c["data"]["support_summary"]).read_text(encoding="utf-8"))
         seed = int(support["seed"])
@@ -495,10 +500,29 @@ class Exp3Pipeline:
         return result
 
     def run(self, stage: str = "all") -> None:
-        if stage not in ("all", "preflight", "extract", "proxy", "validate", "test",
-                         "external", "posttool"):
+        if stage not in ("all", "smoke", "preflight", "extract", "proxy", "validate",
+                         "test", "external", "posttool"):
             raise ValueError("Unknown stage")
         categories = ("global", *HARM_CATEGORIES)
+        if stage == "smoke":
+            harmful, _benign = self._tasks("online_fraud", "val", 16)
+            task = harmful[4]
+            expected = "harmful-a1e7d8f1-feb4-40f7-adb5-7f2133d707ea"
+            if task.task_id != expected:
+                raise ValueError(
+                    f"Pinned Unicode smoke task changed: {task.task_id} != {expected}"
+                )
+            rollout = self.model.rollout(
+                task, self.simulator, condition="unicode_smoke",
+                max_steps=int(self.config["agent"]["max_steps"]),
+                max_new_tokens=int(self.config["agent"]["max_new_tokens"]),
+            )
+            path = self.output / "smoke_report.json"
+            _json(path, {"passed": True, "task": task.as_row(),
+                         "rollout": rollout.as_row()})
+            log_event("exp3_smoke_complete", task_id=task.task_id,
+                      checkpoint=str(path))
+            return
         if stage == "preflight":
             report = {}
             for category in categories:
@@ -747,14 +771,17 @@ class Exp3Pipeline:
                            "judgments": {"baseline": baseline.get(task.task_id),
                                          **{source: judgments.get(task.task_id)
                                             for source, (_name, judgments) in arms.items()}}}
-                    handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+                    handle.write(json.dumps(row, ensure_ascii=True) + "\n")
             render_review_file(review_path)
         adjusted = holm_adjust(p_values)
         for category, p_value in adjusted.items():
             reports[category]["category_vs_global_holm_p"] = p_value
         _json(self.output / "external_first_decision" / "report.json", {
             "support": support, "reports": reports,
-            "limitation": "No benchmark environments executed; these are first-decision transfer diagnostics only.",
+            "limitation": (
+                "No benchmark environments executed; these are first-decision "
+                "transfer diagnostics only."
+            ),
         })
         log_event("exp3_external_complete", checkpoint=str(
             self.output / "external_first_decision" / "report.json"))
@@ -855,7 +882,8 @@ class Exp3Pipeline:
         for category, p_value in adjusted.items():
             reports[category]["category_vs_global_unsafe_holm_p"] = p_value
         _json(self.output / "test_report.json", {
-            "reports": reports, "multiplicity": "Holm across available category-vs-global comparisons",
+            "reports": reports,
+            "multiplicity": "Holm across available category-vs-global comparisons",
             "labels": "local judge estimates; human confirmation remains required",
         })
         log_event("exp3_test_report_ready", checkpoint=str(self.output / "test_report.json"))
@@ -961,7 +989,7 @@ class Exp3Pipeline:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as handle:
             for row in rows:
-                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+                handle.write(json.dumps(row, ensure_ascii=True) + "\n")
         html_path = render_review_file(path)
         log_event("exp3_manual_review_ready", category=category, rows=len(rows),
                   checkpoint=str(path), html=str(html_path))

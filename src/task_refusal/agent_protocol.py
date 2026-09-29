@@ -7,8 +7,28 @@ import re
 from typing import Any
 
 
+def normalize_unicode(text: str) -> str:
+    """Combine escaped UTF-16 pairs and replace isolated surrogate codepoints."""
+    try:
+        text.encode("utf-8")
+        return text
+    except UnicodeEncodeError:
+        return text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+
+
+def _normalize_json_strings(value: Any) -> Any:
+    if isinstance(value, str):
+        return normalize_unicode(value)
+    if isinstance(value, list):
+        return [_normalize_json_strings(item) for item in value]
+    if isinstance(value, dict):
+        return {normalize_unicode(key): _normalize_json_strings(item)
+                for key, item in value.items()}
+    return value
+
+
 def parse_tool_call(response: str) -> tuple[str, dict[str, Any]] | None:
-    cleaned = response.strip()
+    cleaned = normalize_unicode(response).strip()
     if cleaned.startswith("<|python_tag|>"):
         cleaned = cleaned.removeprefix("<|python_tag|>").strip()
     if cleaned.startswith("```json"):
@@ -58,4 +78,4 @@ def parse_tool_call(response: str) -> tuple[str, dict[str, Any]] | None:
             return None
     if not isinstance(arguments, dict):
         return None
-    return name, arguments
+    return normalize_unicode(name), _normalize_json_strings(arguments)

@@ -9,7 +9,7 @@ from task_refusal.causal_selection import (
 )
 from task_refusal.exp3_review import render_review_file
 from task_refusal.exp3_stats import holm_adjust, paired_effect, paired_sign_pvalue
-from task_refusal.agent_protocol import parse_tool_call
+from task_refusal.agent_protocol import normalize_unicode, parse_tool_call
 from task_refusal.agent_simulator import _validate_arguments
 from task_refusal.llama31_prompt import render_llama31_tool_chat
 
@@ -24,6 +24,15 @@ def row(task_id, category, tool):
 
 
 class Exp3PureTests(unittest.TestCase):
+    def test_surrogate_unicode_is_repaired_before_persistence(self):
+        pair = chr(0xD83D) + chr(0xDE80)
+        self.assertEqual(normalize_unicode(pair), "🚀")
+        self.assertEqual(normalize_unicode(chr(0xD83D)), "�")
+        call = parse_tool_call(
+            '{"name":"post_instagram","arguments":{"caption":"\\ud83d"}}'
+        )
+        self.assertEqual(call[1]["caption"], "�")
+
     @staticmethod
     def _schema(property_schema):
         return {"function": {"parameters": {
