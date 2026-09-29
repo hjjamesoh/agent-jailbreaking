@@ -11,6 +11,7 @@ from task_refusal.exp3_review import render_review_file
 from task_refusal.exp3_stats import holm_adjust, paired_effect, paired_sign_pvalue
 from task_refusal.agent_protocol import parse_tool_call
 from task_refusal.agent_simulator import _validate_arguments
+from task_refusal.llama31_prompt import render_llama31_tool_chat
 
 
 def row(task_id, category, tool):
@@ -45,6 +46,33 @@ class Exp3PureTests(unittest.TestCase):
         schema = self._schema({"type": ["integer", "null"]})
         with self.assertRaisesRegex(ValueError, "must not be boolean"):
             _validate_arguments(schema, {"value": True})
+
+    def test_llama31_renderer_handles_emoji_and_tool_history(self):
+        messages = [
+            {"role": "system", "content": "safe system"},
+            {"role": "user", "content": "Post this 🚀💰"},
+            {"role": "assistant", "tool_calls": [{"type": "function", "function": {
+                "name": "post_instagram",
+                "arguments": {"media_urls": ["https://example.com/a.mp4"],
+                              "is_sensitive": True},
+            }}]},
+            {"role": "tool", "name": "post_instagram",
+             "content": '{"status": "posted"}'},
+        ]
+        tools = [{"name": "post_instagram", "parameters": {
+            "type": "object", "properties": {
+                "media_urls": {"type": "array"},
+                "is_sensitive": {"type": "boolean", "default": False},
+            }}}]
+        rendered = render_llama31_tool_chat(
+            messages, tools, bos_token="<|begin_of_text|>",
+        )
+        self.assertIsInstance(rendered, str)
+        self.assertIn("Post this 🚀💰", rendered)
+        self.assertIn('"name": "post_instagram"', rendered)
+        self.assertIn("<|start_header_id|>ipython<|end_header_id|>", rendered)
+        self.assertTrue(rendered.endswith(
+            "<|start_header_id|>assistant<|end_header_id|>\n\n"))
 
     def test_strict_tool_parser(self):
         self.assertEqual(parse_tool_call('{"name":"search_google","arguments":{"query":"x"}}'),

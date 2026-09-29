@@ -11,6 +11,7 @@ import torch
 from task_refusal.agentalign_data import AgentAlignTask
 from task_refusal.agent_protocol import parse_tool_call
 from task_refusal.hooks import temporary_hooks
+from task_refusal.llama31_prompt import render_llama31_tool_chat
 from task_refusal.modeling import LlamaHarness
 
 
@@ -74,39 +75,28 @@ def context_after_first_tool(task: AgentAlignTask, step: dict[str, Any]) -> Agen
 
 class AgentHarness(LlamaHarness):
     def _render(self, context: AgentContext) -> str:
-        # Meta's model card documents this native tool-use chat-template path.
-        # The source provides OpenAI wrappers; Transformers expects inner JSON
-        # function schemas. All generated states use this exact same template.
-        return self.tokenizer.apply_chat_template(
-            list(context.messages),
-            tools=[tool["function"] for tool in context.tools],
-            tokenize=False, add_generation_prompt=True,
+        # Explicitly render the pinned Llama 3.1 custom-tool prompt. Some
+        # Transformers/Jinja combinations return a native non-string value for
+        # particular schemas, which the Rust fast tokenizer cannot accept.
+        return render_llama31_tool_chat(
+            context.messages,
+            [tool["function"] for tool in context.tools],
+            bos_token=self.tokenizer.bos_token,
+            add_generation_prompt=True,
         )
 
     def tokenize(self, contexts):
         if not contexts:
             raise ValueError("No agent contexts to tokenize.")
-        # Ask the model's own chat template for token IDs directly. Rendering
-        # to text and passing that value through the fast tokenizer a second
-        # time is both unnecessary and, for some multi-turn Llama tool chats,
-        # can return a nested value that Rust tokenizers rejects as an invalid
-        # TextEncodeInput.
         encoded: list[list[int]] = []
         for context in contexts:
-            token_ids = self.tokenizer.apply_chat_template(
-                list(context.messages),
-                tools=[tool["function"] for tool in context.tools],
-                tokenize=True, add_generation_prompt=True,
+            token_ids = self.tokenizer.encode(
+                self._render(context), add_special_tokens=False,
             )
-            if isinstance(token_ids, torch.Tensor):
-                token_ids = token_ids.detach().cpu().tolist()
-            if (isinstance(token_ids, list) and len(token_ids) == 1
-                    and isinstance(token_ids[0], list)):
-                token_ids = token_ids[0]
             if not (isinstance(token_ids, list)
                     and all(isinstance(token_id, int) for token_id in token_ids)):
                 raise TypeError(
-                    "Agent chat template did not return one flat token-id list; "
+                    "Agent tokenizer did not return one flat token-id list; "
                     f"received {type(token_ids).__name__}."
                 )
             encoded.append(token_ids)

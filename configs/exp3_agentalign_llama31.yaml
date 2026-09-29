@@ -1,5 +1,5 @@
 experiment: exp3_agentalign_category_causal_llama31
-output_dir: runs/exp3_agentalign_category_causal_llama31_v3
+output_dir: runs/exp3_agentalign_category_causal_llama31_v4
 
 model:
   name: meta-llama/Llama-3.1-8B-Instruct

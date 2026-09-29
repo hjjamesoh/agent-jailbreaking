@@ -112,7 +112,7 @@ class Exp3Pipeline:
             "exp3_pipeline.py", "agent_judge.py", "agent_rollout.py", "agent_simulator.py",
             "agentalign_data.py", "causal_selection.py", "directions.py", "hooks.py",
             "modeling.py", "exp3_external.py", "exp3_stats.py", "exp3_review.py",
-            "agent_protocol.py",
+            "agent_protocol.py", "llama31_prompt.py",
         ):
             fingerprint.update(name.encode())
             fingerprint.update((package / name).read_bytes())

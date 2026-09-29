@@ -88,7 +88,7 @@ tmux attach -t exp3-agent-refusal
 고정 리비전/체크섬으로 검사한다. 모의 도구는 실제 셸·메일·결제·네트워크 서비스에
 접속하지 않는다.
 
-주요 결과는 `runs/exp3_agentalign_category_causal_llama31_v3/` 안의
+주요 결과는 `runs/exp3_agentalign_category_causal_llama31_v4/` 안의
 `directions/`, `proxy/`, `selection/`, `test_report.json`, `manual_review/`,
 `posttool_directions/`, `external_first_decision/`에 기록된다.
 `selection/*.json`의 `selected: null`은 오류가 아니라 데이터·판정기 관문 또는
