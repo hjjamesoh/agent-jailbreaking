@@ -10,7 +10,7 @@ from task_refusal.causal_selection import (
 from task_refusal.exp3_review import render_review_file
 from task_refusal.exp3_stats import holm_adjust, paired_effect, paired_sign_pvalue
 from task_refusal.agent_protocol import normalize_unicode, parse_tool_call
-from task_refusal.agent_simulator import _validate_arguments
+from task_refusal.agent_simulator import _validate_arguments, normalize_arguments
 from task_refusal.llama31_prompt import render_llama31_tool_chat
 
 
@@ -55,6 +55,55 @@ class Exp3PureTests(unittest.TestCase):
         schema = self._schema({"type": ["integer", "null"]})
         with self.assertRaisesRegex(ValueError, "must not be boolean"):
             _validate_arguments(schema, {"value": True})
+
+    def test_lossless_schema_adapter_and_audit_events(self):
+        schema = {"function": {"parameters": {
+            "type": "object",
+            "properties": {
+                "flag": {"type": "boolean"},
+                "count": {"type": "integer"},
+                "ratio": {"type": "number"},
+                "tags": {"type": "array"},
+                "metadata": {"type": "object"},
+                "pid": {"type": "integer"},
+            },
+            "required": ["flag", "count", "ratio", "tags", "metadata"],
+        }}}
+        raw = {"flag": "False", "count": "10", "ratio": "0.5",
+               "tags": "['a', 'b']", "metadata": "{}", "pid": "null"}
+        normalized, events = normalize_arguments(schema, raw)
+        self.assertEqual(normalized, {
+            "flag": False, "count": 10, "ratio": 0.5,
+            "tags": ["a", "b"], "metadata": {},
+        })
+        self.assertEqual(raw["flag"], "False")  # input is never mutated
+        self.assertEqual(len(events), 6)
+        _validate_arguments(schema, normalized)
+
+    def test_schema_adapter_never_invents_or_reinterprets_semantics(self):
+        schema = {"function": {"parameters": {
+            "type": "object",
+            "properties": {
+                "tags": {"type": "array"},
+                "mode": {"type": "string", "enum": ["safe"]},
+                "required_value": {"type": "integer"},
+            },
+            "required": ["required_value"],
+        }}}
+        raw = {"tags": "one", "mode": "unsafe", "unknown": "x"}
+        normalized, events = normalize_arguments(schema, raw)
+        self.assertEqual(normalized, raw)
+        self.assertEqual(events, ())
+        with self.assertRaisesRegex(ValueError, "Required tool argument"):
+            _validate_arguments(schema, normalized)
+
+        optional_string = {"function": {"parameters": {
+            "type": "object",
+            "properties": {"note": {"type": "string"}},
+        }}}
+        normalized, events = normalize_arguments(optional_string, {"note": "null"})
+        self.assertEqual(normalized, {"note": "null"})
+        self.assertEqual(events, ())
 
     def test_llama31_renderer_handles_emoji_and_tool_history(self):
         messages = [
@@ -126,6 +175,7 @@ class Exp3PureTests(unittest.TestCase):
             delta([False]*4, [False]*4),
             delta([True]*4, [True]*4),
             delta([True]*4, [True]*4),
+            delta([True]*4, [True]*4),
         )
         selected, decisions = select_candidate([evidence], CausalThresholds(
             4, 0.01, 0.01, 0.01, 0.05, 0.05, 0.05))
@@ -142,11 +192,29 @@ class Exp3PureTests(unittest.TestCase):
             delta([False]*4, [False]*4),
             delta([True]*4, [True]*4),
             delta([True]*4, [False, True, True, True]),
+            delta([True]*4, [True]*4),
         )
         selected, decisions = select_candidate([evidence], CausalThresholds(
             4, 0.01, 0.01, 0.01, 0.05, 0.05, 0.05))
         self.assertIsNone(selected)
         self.assertIn("benign_tool_use_drop_exceeded", decisions[0].reasons)
+
+    def test_raw_tool_use_loss_cannot_be_hidden_by_adapter_success(self):
+        ids = [str(i) for i in range(4)]
+        delta = lambda a, b: paired_delta(dict(zip(ids, a)), dict(zip(ids, b)))
+        evidence = CandidateEvidence(
+            "x", delta([True]*4, [False, True, True, True]),
+            delta([False]*4, [True, False, False, False]),
+            delta([True]*4, [False, True, True, True]),
+            delta([False]*4, [False]*4),
+            delta([True]*4, [True]*4),
+            delta([True]*4, [True]*4),
+            delta([True]*4, [False, True, True, True]),
+        )
+        selected, decisions = select_candidate([evidence], CausalThresholds(
+            4, 0.01, 0.01, 0.01, 0.05, 0.05, 0.05))
+        self.assertIsNone(selected)
+        self.assertIn("benign_raw_tool_use_drop_exceeded", decisions[0].reasons)
 
     def test_paired_statistics_and_holm(self):
         a = {str(i): False for i in range(20)}

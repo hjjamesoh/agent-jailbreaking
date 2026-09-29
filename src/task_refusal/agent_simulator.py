@@ -7,14 +7,19 @@ closed before any import. Keep this module isolated from real tool APIs.
 
 from __future__ import annotations
 
+import ast
+import copy
 import hashlib
 import importlib.util
 import json
+import math
 import random
+import re
 import subprocess
 import sys
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -92,6 +97,116 @@ def _validate_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> No
             raise ValueError(f"Tool argument {key!r} is outside the declared enum.")
 
 
+def _declared_types(property_schema: dict[str, Any]) -> list[str]:
+    expected = property_schema.get("type")
+    if expected is None:
+        return []
+    if isinstance(expected, str):
+        return [expected]
+    if isinstance(expected, list) and all(isinstance(item, str) for item in expected):
+        return expected
+    raise ValueError("Malformed JSON Schema type declaration.")
+
+
+def _structured_string(value: str, expected: type) -> Any | None:
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            parsed = parser(value)
+        except (ValueError, SyntaxError, json.JSONDecodeError):
+            continue
+        if isinstance(parsed, expected):
+            # ast.literal_eval is safe, but constrain its result to JSON data.
+            try:
+                json.dumps(parsed, allow_nan=False)
+            except (TypeError, ValueError):
+                continue
+            return parsed
+    return None
+
+
+def normalize_arguments(
+    schema: dict[str, Any], arguments: dict[str, Any],
+) -> tuple[dict[str, Any], tuple[dict[str, str], ...]]:
+    """Apply only deterministic, meaning-preserving schema conversions."""
+    normalized = copy.deepcopy(arguments)
+    parameters = schema["function"].get("parameters", {})
+    properties = parameters.get("properties", {})
+    required = set(parameters.get("required", []))
+    events: list[dict[str, str]] = []
+    for key in list(normalized):
+        if key not in properties:
+            continue  # Unknown arguments remain visible and fail validation.
+        value = normalized[key]
+        if not isinstance(value, str):
+            continue
+        declared = _declared_types(properties[key])
+        stripped = value.strip()
+        lowered = stripped.lower()
+        conversion = None
+        converted: Any = value
+        # Never reinterpret a value that is already valid as a string.  In
+        # particular, an optional string whose literal value is "null" must
+        # remain that string rather than silently disappearing.
+        if lowered == "null" and "string" not in declared:
+            if "null" in declared:
+                converted, conversion = None, "string_to_null"
+            elif key not in required:
+                del normalized[key]
+                events.append({"argument": key,
+                               "conversion": "string_null_to_omitted_optional"})
+                continue
+        elif "string" not in declared and "boolean" in declared \
+                and lowered in ("true", "false"):
+            converted, conversion = lowered == "true", "string_to_boolean"
+        elif "string" not in declared and "integer" in declared \
+                and re.fullmatch(r"[+-]?\d+", stripped):
+            converted, conversion = int(stripped), "string_to_integer"
+        elif "string" not in declared and "number" in declared \
+                and re.fullmatch(
+                    r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", stripped
+                ):
+            number = float(stripped)
+            if math.isfinite(number):
+                converted, conversion = number, "string_to_number"
+        elif "string" not in declared and "array" in declared:
+            parsed = _structured_string(stripped, list)
+            if parsed is not None:
+                converted, conversion = parsed, "string_to_array"
+        elif "string" not in declared and "object" in declared:
+            parsed = _structured_string(stripped, dict)
+            if parsed is not None:
+                converted, conversion = parsed, "string_to_object"
+        if conversion is not None:
+            normalized[key] = converted
+            events.append({"argument": key, "conversion": conversion})
+    return normalized, tuple(events)
+
+
+def _validation_error(schema: dict[str, Any], arguments: dict[str, Any]) -> str | None:
+    try:
+        _validate_arguments(schema, arguments)
+        return None
+    except (TypeError, ValueError) as exc:
+        return str(exc)[:300]
+
+
+@dataclass(frozen=True)
+class SimulatedInvocation:
+    result: dict[str, Any]
+    raw_arguments: dict[str, Any]
+    executed_arguments: dict[str, Any]
+    adapter_events: tuple[dict[str, str], ...]
+    raw_arguments_valid: bool
+    executed_arguments_valid: bool
+    raw_validation_error: str | None
+    executed_validation_error: str | None
+
+    @property
+    def adapter_rescued(self) -> bool:
+        return (not self.raw_arguments_valid and self.executed_arguments_valid
+                and bool(self.adapter_events))
+
+
 class AgentAlignSimulator:
     def __init__(self, repo: str | Path):
         directory = verify_simulator_source(repo)
@@ -130,23 +245,46 @@ class AgentAlignSimulator:
         self, name: str, arguments: dict[str, Any], exposed: tuple[dict[str, Any], ...],
         *, nonce: str,
     ) -> dict[str, Any]:
+        return self.invoke_with_trace(name, arguments, exposed, nonce=nonce).result
+
+    def invoke_with_trace(
+        self, name: str, arguments: dict[str, Any], exposed: tuple[dict[str, Any], ...],
+        *, nonce: str,
+    ) -> SimulatedInvocation:
         schemas = {item["function"]["name"]: item for item in exposed}
         if name not in schemas or name not in self.functions:
-            return {"error": "unavailable_tool", "tool": name}
-        try:
-            _validate_arguments(schemas[name], arguments)
-        except (TypeError, ValueError) as exc:
-            return {"error": "invalid_tool_arguments", "tool": name,
-                    "type": type(exc).__name__, "detail": str(exc)[:300]}
+            return SimulatedInvocation(
+                {"error": "unavailable_tool", "tool": name}, arguments, arguments, (),
+                False, False, "Tool is unavailable.", "Tool is unavailable.",
+            )
+        schema = schemas[name]
+        raw_error = _validation_error(schema, arguments)
+        executed, events = normalize_arguments(schema, arguments)
+        executed_error = _validation_error(schema, executed)
+        if executed_error is not None:
+            result = {"error": "invalid_tool_arguments", "tool": name,
+                      "type": "ValueError", "detail": executed_error}
+            return SimulatedInvocation(
+                result, arguments, executed, events, raw_error is None, False,
+                raw_error, executed_error,
+            )
         try:
             self._deterministic_bindings(nonce)
-            result = self.functions[name](**arguments)
+            result = self.functions[name](**executed)
             # Fail closed on non-serializable or unbounded tool output.
-            encoded = json.dumps(result, ensure_ascii=False, default=str)
+            encoded = json.dumps(result, ensure_ascii=True, default=str)
             if len(encoded) > 20000:
-                return {"error": "tool_output_too_large", "tool": name}
+                result = {"error": "tool_output_too_large", "tool": name}
+                return SimulatedInvocation(
+                    result, arguments, executed, events, raw_error is None, True,
+                    raw_error, None,
+                )
             decoded = json.loads(encoded)
-            return decoded if isinstance(decoded, dict) else {"result": decoded}
+            result = decoded if isinstance(decoded, dict) else {"result": decoded}
         except Exception as exc:
-            return {"error": "synthetic_tool_exception", "tool": name,
-                    "type": type(exc).__name__, "detail": str(exc)[:300]}
+            result = {"error": "synthetic_tool_exception", "tool": name,
+                      "type": type(exc).__name__, "detail": str(exc)[:300]}
+        return SimulatedInvocation(
+            result, arguments, executed, events, raw_error is None, True,
+            raw_error, None,
+        )

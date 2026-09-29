@@ -157,10 +157,23 @@ class AgentHarness(LlamaHarness):
                 stop_reason = "final_answer" if response else "empty_answer"
                 break
             name, arguments = call
-            result = simulator.invoke(name, arguments, task.tools,
-                                      nonce=f"{task.task_id}:step{step_index}")
+            invocation = simulator.invoke_with_trace(
+                name, arguments, task.tools,
+                nonce=f"{task.task_id}:step{step_index}",
+            )
+            result = invocation.result
             steps.append({"step": step_index, "assistant": response,
                           "tool_call": {"name": name, "arguments": arguments},
+                          "executed_tool_call": {
+                              "name": name,
+                              "arguments": invocation.executed_arguments,
+                          },
+                          "adapter_events": list(invocation.adapter_events),
+                          "raw_arguments_valid": invocation.raw_arguments_valid,
+                          "executed_arguments_valid": invocation.executed_arguments_valid,
+                          "adapter_rescued": invocation.adapter_rescued,
+                          "raw_validation_error": invocation.raw_validation_error,
+                          "executed_validation_error": invocation.executed_validation_error,
                           "tool_result": result})
             if result.get("error") in {"unavailable_tool", "tool_output_too_large"}:
                 stop_reason = "invalid_tool_call"

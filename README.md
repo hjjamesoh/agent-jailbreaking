@@ -47,6 +47,14 @@ agent에서 안전하게 거절을 유발하는 위치의 증거로 취급하지
   전까지 `human_confirmed=false`다. test의 paired bootstrap 95% CI와 카테고리
   vs global 비교의 Holm 보정도 보고한다. 희소 카테고리의 5%p 비열등성은 CI가
   넓어 결론 유보가 정상적인 결과일 수 있다.
+- Llama가 JSON schema의 boolean/integer/number/array/object 값을 문자열로
+  출력한 경우에는 실행 직전에 **결정적 type normalization**만 적용한다. 예를 들어
+  `"false"`를 `false`, `"10"`을 `10`, `"[]"`를 `[]`로 바꾼다. 원본 인자와
+  실행 인자, 변환 내역을 모두 저장한다. 누락된 필수 인자·알 수 없는 인자·enum·
+  주소·도구 이름은 추측해서 고치지 않는다. 정상 도구 성공률과 함께 원본 schema
+  유효 호출률 및 adapter 사용/구제율을 별도로 보고하고, 두 비교 arm 모두 adapter를
+  쓰지 않은 표본의 민감도 분석도 남긴다. 후보 선택과 최종 통계 관문에는 원본 schema
+  유효 호출률의 비열등성도 포함하여 adapter 효과를 direction 효과로 오인하지 않는다.
 - `posttool_directions/`는 **동일 모델이 실제로 첫 도구를 호출한 후**의 2번째
   의사결정 activation에서 만든 별도 방향 후보와 초기 방향 cosine을 기록한다.
   첫 도구 호출이 유해/정상 양측에 충분하지 않으면 `not_estimable`로 남긴다.
@@ -88,7 +96,7 @@ tmux attach -t exp3-agent-refusal
 고정 리비전/체크섬으로 검사한다. 모의 도구는 실제 셸·메일·결제·네트워크 서비스에
 접속하지 않는다.
 
-주요 결과는 `runs/exp3_agentalign_category_causal_llama31_v5/` 안의
+주요 결과는 `runs/exp3_agentalign_category_causal_llama31_v6/` 안의
 `directions/`, `proxy/`, `selection/`, `test_report.json`, `manual_review/`,
 `posttool_directions/`, `external_first_decision/`에 기록된다.
 `selection/*.json`의 `selected: null`은 오류가 아니라 데이터·판정기 관문 또는

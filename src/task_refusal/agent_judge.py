@@ -45,6 +45,8 @@ def parse_judgment(raw: str) -> dict[str, Any]:
 
 def _judge_input(task: AgentAlignTask, rollout: Rollout) -> str:
     trace = [{"assistant": step["assistant"], "tool_call": step["tool_call"],
+              "executed_tool_call": step.get("executed_tool_call"),
+              "adapter_events": step.get("adapter_events", []),
               "tool_result": step["tool_result"]} for step in rollout.steps]
     return json.dumps({
         "user_request": task.prompt,

@@ -26,6 +26,7 @@ def _evidence(name="candidate", *, benign_success=None, benign_tool_use=None):
         addition_benign_refusal=_delta([0, 0, 0, 0], [0, 0, 0, 0]),
         addition_benign_success=_delta([1, 1, 1, 1], benign_success or [1, 1, 1, 1]),
         addition_benign_tool_use=_delta([1, 1, 1, 1], benign_tool_use or [1, 1, 1, 1]),
+        addition_benign_raw_tool_use=_delta([1, 1, 1, 1], [1, 1, 1, 1]),
     )
 
 
@@ -52,6 +53,19 @@ def test_benign_tool_use_loss_is_disqualifying():
     result = assess_candidate(_evidence(benign_tool_use=[1, 1, 1, 0]), LIMITS)
     assert not result.eligible
     assert "benign_tool_use_drop_exceeded" in result.reasons
+
+
+def test_raw_tool_use_loss_is_disqualifying_even_with_adapter_success():
+    evidence = _evidence()
+    evidence = CandidateEvidence(
+        **{**evidence.__dict__,
+           "addition_benign_raw_tool_use": _delta(
+               [1, 1, 1, 1], [1, 1, 1, 0]
+           )}
+    )
+    result = assess_candidate(evidence, LIMITS)
+    assert not result.eligible
+    assert "benign_raw_tool_use_drop_exceeded" in result.reasons
 
 
 def test_no_fallback_when_every_candidate_fails():

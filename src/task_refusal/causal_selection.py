@@ -68,6 +68,7 @@ class CandidateEvidence:
     addition_benign_refusal: PairedDelta
     addition_benign_success: PairedDelta
     addition_benign_tool_use: PairedDelta
+    addition_benign_raw_tool_use: PairedDelta
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,7 @@ def assess_candidate(evidence: CandidateEvidence, limits: CausalThresholds) -> C
         evidence.addition_benign_refusal,
         evidence.addition_benign_success,
         evidence.addition_benign_tool_use,
+        evidence.addition_benign_raw_tool_use,
     )
     if any(metric.n < limits.min_validation_tasks_per_arm for metric in metrics):
         reasons.append("insufficient_validation_tasks")
@@ -103,6 +105,8 @@ def assess_candidate(evidence: CandidateEvidence, limits: CausalThresholds) -> C
         reasons.append("benign_success_drop_exceeded")
     if evidence.addition_benign_tool_use.delta < -limits.max_benign_tool_use_drop:
         reasons.append("benign_tool_use_drop_exceeded")
+    if evidence.addition_benign_raw_tool_use.delta < -limits.max_benign_tool_use_drop:
+        reasons.append("benign_raw_tool_use_drop_exceeded")
     return CandidateDecision(evidence.candidate_id, not reasons, tuple(reasons), evidence)
 
 
