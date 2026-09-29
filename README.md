@@ -119,6 +119,36 @@ tmux attach -t exp3-agent-refusal
 현재 메인 실험은 `meta-llama/Llama-3.1-8B-Instruct`에서 일반 chat 입력으로 구한
 refusal direction과 AgentLens trajectory의 각 step에서 구한 direction을 비교한다.
 
+## 저장된 H2 방향의 빠른 addition smoke test
+
+H2의 `directions/step_directions.pt`가 서버에 남아 있으면 방향을 다시 추출하지 않고
+`llm_reference`와 `agent_all`의 layer 12 unit direction을 AgentLens held-out state에
+양·음으로 더해 전체 다음 응답을 비교할 수 있다. AgentLens 방향은
+`label=1-label=0`이므로 `+`가 거절 방향이라고 가정하지 않고 두 부호를 모두 실행한다.
+
+```bash
+bash scripts/run_h2_smoke_tmux.sh \
+  h2-steering-smoke \
+  configs/h2_agent_step_llama31.yaml \
+  0
+```
+
+기본 실행은 eligible step마다 label별 최대 6개, 방향 2개, alpha `1 2 4`, 양·음과
+baseline을 평가한다. 중단 후 같은 명령을 새 tmux 이름으로 다시 실행하면 완성된
+condition/state 응답은 건너뛴다. 결과는 다음에 저장된다.
+
+```text
+runs/h2_llm_vs_agent_step_refusal_llama31_v1/steering_smoke/
+  responses.jsonl
+  summary.json
+  manual_review.html
+```
+
+`refusal_phrase_rate`는 여러 완성 구문을 이용한 빠른 탐색 지표일 뿐 검증된 거절
+라벨이 아니다. 결론을 내리기 전에 `manual_review.html`에서 baseline, 양·음 방향의
+응답을 직접 비교해야 한다. 이 smoke test는 실제 tool execution이나 전체 trajectory
+성공률을 검증하지 않는다.
+
 이번 실행은 representation 비교만 수행한다. 다음 항목은 포함하지 않는다.
 
 - category별 direction
