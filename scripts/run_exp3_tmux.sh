@@ -9,7 +9,7 @@ if [[ ! "$gpu_id" =~ ^[0-9]+$ ]]; then
   echo "usage: bash scripts/run_exp3_tmux.sh <session> <config> <physical_gpu_id> [stage]" >&2
   exit 2
 fi
-if [[ ! "$stage" =~ ^(all|preflight|extract|proxy|validate|test|external|posttool)$ ]]; then
+if [[ ! "$stage" =~ ^(all|smoke|preflight|extract|proxy|validate|test|external|posttool)$ ]]; then
   echo "invalid stage: $stage" >&2
   exit 2
 fi
