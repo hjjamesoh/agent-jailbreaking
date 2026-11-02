@@ -1,4 +1,146 @@
-# Exp3: AgentAlign 기반 카테고리별 인과적 refusal-direction 탐색
+# Current: Qwen2.5용 통제된 agent minimal-pair 데이터 구축
+
+새 실험의 목표 모델은 `Qwen/Qwen2.5-7B-Instruct`이고, 영어 refusal direction의
+외부 고정 좌표는 `resid_pre`, 0-based layer 19, Qwen chat-template position `-4`다.
+방향을 계산하기 전에 다음 6개 위험 범주의 harmful/benign 1대1 대조 데이터를
+구축한다.
+
+- `unauthorized_cyber_operation`
+- `privacy_data_exfiltration`
+- `fraud_deception`
+- `misinformation`
+- `illicit_trade`
+- `harassment_targeted_abuse`
+
+각 범주는 train 400쌍, validation 100쌍, test 100쌍으로 총 600쌍이다. 전체는
+3,600쌍, 즉 harmful/benign 프롬프트 7,200개다. 한 쌍은 동일한 system prompt,
+agent scaffold, tool schema, actor, target, 작업, 예상 단계 수를 공유한다. 최종
+user task는 `{{risk_context}}`가 정확히 한 번 들어간 공통 템플릿으로부터 렌더링해,
+위험 문맥 외의 문자열이 달라지는 것을 구조적으로 금지한다.
+
+이 단계는 **데이터셋 구축만** 수행한다. 실제 agent trajectory나 여러 턴의 activation은
+생성하지 않으며, `expected_steps`는 과제 복잡도를 범주와 split 사이에서 균형화하기
+위한 메타데이터다. refusal direction을 최초 의사결정 턴에 고정할지, 후속 턴을 별도
+변수로 둘지는 데이터 검토가 끝난 뒤 별도의 실험 설계로 확정한다.
+
+원본은 고정 버전 Agent-SafetyBench와 BeaverTails 330k다. 원문은 최종 데이터에
+그대로 복제하지 않고 상황 seed로만 사용하며, source record와 체크섬을 보존한다.
+AgentHarm은 데이터 카드의 학습용 사용 자제 요청을 존중하여 생성 원료에서 제외하고
+향후 외부 평가에만 사용한다. 동일 source seed에서 파생된 변형은 하나의 split에만
+들어간다. 도구 scaffold 3종과 예상 2/3/4 step은 범주마다 각각 200쌍으로 균형화하며,
+각 train/validation/test 내부에서도 세 조건의 표본 수 차이가 최대 1이 되게 한다.
+
+## 데이터 생성 단계
+
+GPU 서버에서 다음 순서로 새 환경을 만든다. Python 3.10 이상, Git, `tmux`, CUDA가
+필요하다. 모델 가중치와 생성 산출물을 위한 충분한 디스크 공간도 확보해야 한다.
+
+```bash
+git clone https://github.com/hjjamesoh/agent-jailbreaking.git
+cd ~/agent-jailbreaking
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
+
+python scripts/check_gpu_env.py
+python -m pytest
+```
+
+먼저 고정 revision의 공개 source를 내려받고 generation plan을 만든다. 아래 세 명령은
+GPU를 사용하지 않는다.
+
+```bash
+cd ~/agent-jailbreaking
+source .venv/bin/activate
+
+python -u scripts/prepare_paired_sources.py
+python -u scripts/build_paired_agent_dataset.py collect
+python -u scripts/build_paired_agent_dataset.py plan
+```
+
+현재 공개 원본에서 확인한 독립 seed 수는 다음과 같다.
+
+| category | independent source seeds |
+|---|---:|
+| unauthorized cyber operation | 248 |
+| privacy/data exfiltration | 2,102 |
+| fraud/deception | 3,199 |
+| misinformation | 2,231 |
+| illicit trade | 1,960 |
+| harassment/targeted abuse | 5,601 |
+
+Cyber 범주만 600개보다 작으므로 248개 source scenario에서 최대 3개씩 서로 다른
+agent scenario를 생성한다. 같은 source의 변형은 split을 넘지 않는다. 나머지 다섯
+범주는 최종 쌍마다 서로 다른 source seed를 사용한다. 생성 계획은 정확히 3,600행이며
+`data/processed/controlled_pairs_v1/generation_plan.jsonl`에 기록된다.
+
+실제 pair authoring은 목표 모델 7B와 분리된 `Qwen2.5-32B-Instruct`를 기본값으로
+사용한다. 이 모델은 source의 위험한 세부 절차를 복사하지 않고, 허구 sandbox의
+통제된 risk-context pair만 JSON으로 작성한다. 중단 후 재실행하면 이미 검증된 slot은
+건너뛴다. gated model 접근을 요구받는 환경이라면 실행 전에 `hf auth login`을 한다.
+
+32B BF16 가중치는 대략 64GB이므로 80GB급 GPU 한 장 또는 여러 GPU가 권장된다.
+단일 GPU 0에서 시작하는 명령은 다음과 같다.
+
+```bash
+bash scripts/run_paired_data_tmux.sh \
+  paired-data-v1 \
+  0 \
+  generate \
+  Qwen/Qwen2.5-32B-Instruct \
+  4
+
+bash scripts/tmux_status.sh paired-data-v1
+```
+
+GPU 0과 1을 함께 쓰려면 두 번째 인자만 쉼표 목록으로 바꾼다. 메모리가 부족하면 마지막
+batch 인자를 `1`로 낮춘 뒤 같은 명령을 다시 실행한다.
+
+```bash
+bash scripts/run_paired_data_tmux.sh \
+  paired-data-v1 \
+  0,1 \
+  generate \
+  Qwen/Qwen2.5-32B-Instruct \
+  4
+```
+
+세션에 직접 접속하거나 로그를 확인할 수 있다.
+
+```bash
+tmux attach -t paired-data-v1
+tail -f runs/paired-data-v1_*.log
+```
+
+생성이 모두 끝난 뒤 구조 검증과 review sheet를 만든다.
+
+```bash
+python -u scripts/build_paired_agent_dataset.py finalize
+python -u scripts/build_paired_agent_dataset.py audit
+```
+
+주요 산출물은 다음과 같다.
+
+```text
+data/processed/controlled_pairs_v1/
+  source_seeds.jsonl
+  source_seed_summary.json
+  generation_plan.jsonl
+  generator_outputs.jsonl
+  pairs.jsonl
+  audit_report.json
+  manual_review.csv
+```
+
+`audit_report.json: passed=true`는 수량, 1대1 구조, 중복, source split 누수 검사를
+통과했다는 뜻이지 의미 품질이 확정됐다는 뜻은 아니다. `manual_review.csv` 검토 전
+모든 행은 `human_reviewed=false`이며, 이 상태로 최종 refusal direction 결과를
+확정해서는 안 된다.
+
+---
+
+# Historical Exp3: AgentAlign 기반 카테고리별 인과적 refusal-direction 탐색
 
 현재 메인 실험은 `configs/exp3_agentalign_llama31.yaml` / `scripts/run_exp3.py`다.
 과거 Exp1/H2 코드는 재현 목적으로 보존한다. H2 설명은 이 문서 아래에 남겨 두었다.
