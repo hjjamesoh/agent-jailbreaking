@@ -1,0 +1,5 @@
+# Install only into a NEW environment if the existing GPU environment is unavailable.
+torch>=2.7,<3
+transformers>=4.45,<5
+accelerate>=0.33,<2
+safetensors>=0.4
