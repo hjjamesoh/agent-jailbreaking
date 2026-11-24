@@ -1,0 +1,82 @@
+{
+  "ibm_revision": "52be60235ee309b46c49d6d5877f36e20c52e6ab",
+  "harmbench_revision": "8e1604d1171fe8a48d8febecd22f600e462bdcdd",
+  "gsm8k_revision": "3101c7d5072418e28b9008a6636bde82a006892c",
+  "assets": [
+    {
+      "path": "vendor/activation_steering/__init__.py",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/activation_steering/__init__.py",
+      "git_blob_sha1": "461a7aed6626c799cf6bbf7fc8e9ad06cf37411a"
+    },
+    {
+      "path": "vendor/activation_steering/config.py",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/activation_steering/config.py",
+      "git_blob_sha1": "9aac6847d2fe193c3835848e40fb697545f5c4a9"
+    },
+    {
+      "path": "vendor/activation_steering/console.py",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/activation_steering/console.py",
+      "git_blob_sha1": "7c649ea64985ecf8759bf334cb2fb2163dd8b930"
+    },
+    {
+      "path": "vendor/activation_steering/leash_layer.py",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/activation_steering/leash_layer.py",
+      "git_blob_sha1": "fae6b9eaa80cd0a582c2602922830c16bd7feeab"
+    },
+    {
+      "path": "vendor/activation_steering/malleable_model.py",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/activation_steering/malleable_model.py",
+      "git_blob_sha1": "6e914e8d026a9661ae514cd7ba0ade44c6cacaaa"
+    },
+    {
+      "path": "vendor/activation_steering/steering_dataset.py",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/activation_steering/steering_dataset.py",
+      "git_blob_sha1": "72077f54f0eaf301e6ca884f891e3b733e32ec3d"
+    },
+    {
+      "path": "vendor/activation_steering/steering_vector.py",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/activation_steering/steering_vector.py",
+      "git_blob_sha1": "74a445ccad2be0d258965fb5143ecb6968cf6286"
+    },
+    {
+      "path": "vendor/activation_steering/utils.py",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/activation_steering/utils.py",
+      "git_blob_sha1": "0bd4b534ae7cc369eda892e58d4f078b6ad8aaa6"
+    },
+    {
+      "path": "vendor/LICENSE",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/LICENSE",
+      "git_blob_sha1": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+    },
+    {
+      "path": "vendor/docs/demo-data/alpaca.json",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/docs/demo-data/alpaca.json",
+      "git_blob_sha1": "f625b2f930eb60a71935c41ccd6ac80a85f84eb9"
+    },
+    {
+      "path": "vendor/docs/demo-data/behavior_refusal.json",
+      "url": "https://raw.githubusercontent.com/IBM/activation-steering/52be60235ee309b46c49d6d5877f36e20c52e6ab/docs/demo-data/behavior_refusal.json",
+      "git_blob_sha1": "fff64dfcf80fd92914556fb2984181c53ae18473"
+    },
+    {
+      "path": "raw/harmbench.csv",
+      "url": "https://raw.githubusercontent.com/centerforaisafety/HarmBench/8e1604d1171fe8a48d8febecd22f600e462bdcdd/data/behavior_datasets/harmbench_behaviors_text_all.csv",
+      "git_blob_sha1": "8a6b423d85e9acdc168c57a6a957755cfa86c4cb"
+    },
+    {
+      "path": "raw/HarmBench_LICENSE",
+      "url": "https://raw.githubusercontent.com/centerforaisafety/HarmBench/8e1604d1171fe8a48d8febecd22f600e462bdcdd/LICENSE",
+      "git_blob_sha1": "0e6b144b4bcac3fabddd0d72aa893fc7c50f2fac"
+    },
+    {
+      "path": "raw/gsm8k_train.jsonl",
+      "url": "https://raw.githubusercontent.com/openai/grade-school-math/3101c7d5072418e28b9008a6636bde82a006892c/grade_school_math/data/train.jsonl",
+      "git_blob_sha1": "7d97154b91aef28d01c3301741c81ce90039a4b1"
+    },
+    {
+      "path": "raw/GSM8K_LICENSE",
+      "url": "https://raw.githubusercontent.com/openai/grade-school-math/3101c7d5072418e28b9008a6636bde82a006892c/LICENSE",
+      "git_blob_sha1": "9e84fcbc4d81a1f433c90caf9f1cef373c12edae"
+    }
+  ]
+}

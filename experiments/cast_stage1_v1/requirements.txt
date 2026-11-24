@@ -1,0 +1,8 @@
+# Installed into runs/cast_stage1_v1/env, never into the old experiment's environment.
+torch>=2.7,<3
+transformers>=4.45,<5
+accelerate>=0.33,<2
+numpy>=1.26,<3
+scikit-learn>=1.5,<2
+rich>=13,<16
+matplotlib>=3.9,<4
