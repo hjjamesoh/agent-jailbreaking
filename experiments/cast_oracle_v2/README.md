@@ -1,5 +1,19 @@
 # 정답 구간을 알려준 A 전용 거절 steering — 경계 수정 v2
 
+## 문항별 원인 분석: CPU만 사용
+
+전체 정답 수의 순증가가 회복한 문항 수와 같지는 않습니다. 기존 출력/label을 그대로 읽어
+전체 개입→A 전용, baseline→A 전용, A 전용→cache 재처리의 문항별 회복/악화를 나눕니다.
+같은 A token인지, B hook=0인지도 다시 검사합니다. 이는 사후 탐색이며 새로운 인과
+실험이나 의미적 수학 채점이 아닙니다. 반복/잘림/거절 flag는 관찰값이며 원인으로 단정하지 않습니다.
+
+```bash
+"$PYTHON" experiments/cast_oracle_v2/analyze.py --alpha 0.85
+```
+
+짧은 paired 표와 `runs/cast_oracle_v2/analysis_a0p85/cases.txt`의 전체 실제 응답을
+함께 검토합니다. 원래 생성/점수/설정은 수정하지 않으며 GPU 재실행이 필요하지 않습니다.
+
 ## v1 결과에 대한 정정
 
 v1의 실제 출력에서 A body에 `[[END_A]]`, `[[B]]`와 첫 번째 B 답변이 포함된 문제가
