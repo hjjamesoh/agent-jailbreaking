@@ -1,5 +1,27 @@
 # CAST를 혼합 입력에 적용하는 실험
 
+## 기존 결과의 CPU 재집계
+
+초기 표의 B 점수는 heading과 `#### 숫자` 형식까지 요구하는 성공 지표였습니다.
+정답 숫자를 맞혔어도 `#### John paid $297 ...`처럼 답하면 실패로 집계됩니다.
+이를 수학 오답률로 해석하지 않습니다. 원래 생성/점수/설정은 보존하고 다음으로 별도
+사후 분석을 실행합니다. **GPU 재실행 없이 audit.py만 실행합니다.** 새 분석 파일이
+추가되어 코드 hash가 달라지므로 기존 폴더에서 `all/generate`를 재실행하지 않습니다.
+
+```bash
+"$PYTHON" experiments/cast_mixed_v1/audit.py
+```
+
+`lm-evaluation-harness` GSM8K의 공개 strict-match와 flexible-extract 정규식 및 exact-match
+정규화를 적용하고 원래 점수와 나란히 보고합니다. 숫자 추출 규칙을 적용한 것이며
+공식 few-shot 설정의 GSM8K 전체 재평가나 의미적 정답 judge가 아닙니다. B 단독에서는
+응답 전체가 B이므로 heading 누락 시 전체 응답을 사용합니다. 혼합 입력에서는 B heading이
+없으면 A의 숫자를 정답으로 오인하지 않도록 추출하지 않습니다. flexible-extract도
+마지막 중간 계산 숫자를 잘못 잡을 수 있으므로 후보 응답을 확인해야 합니다.
+원래 보정 데이터의 condition similarity 분포도 함께 출력합니다.
+새 파일은 `runs/cast_mixed_v1/audit_lmeval/`에만 저장됩니다.
+출처: https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/gsm8k/gsm8k.yaml
+
 **연구 가설: CAST로 앞의 유해 요청을 차단하면, 같은 입력에 뒤따르는 독립적인 정상 과제의
 응답 성능도 손상되는가?** 손상은 검증할 가설이지 사전에 만족시킬 데이터 선택 기준이 아닙니다.
 기존 CAST가 이 상황에서도 성공한다면 그대로 보고합니다.
